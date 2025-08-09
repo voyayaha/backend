@@ -3,7 +3,6 @@ uvicorn[standard]
 torch
 python-dotenv
 httpx
-pyttsx3
 pydantic
 beautifulsoup4   # optional future parsing
 transformers
@@ -11,4 +10,5 @@ requests
 praw
 openai
 typing
+
 datetime

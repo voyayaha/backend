@@ -5,7 +5,6 @@ from pydantic import BaseModel
 import os
 from hotels import search_hotels
 from social import scrape_social
-from tts import synthesize
 from db import init_db, save_message
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 from fastapi import FastAPI, Query
@@ -153,6 +152,7 @@ async def mindful_places(
 @app.get("/trends")
 async def travel_trends(location: str = Query("Pune")):
     return await get_trending_spots(location)
+
 
 
 

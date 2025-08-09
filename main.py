@@ -33,10 +33,6 @@ load_dotenv()   # pull API keys from .env
 
 app = FastAPI(title="Voyayaha – AI Travel Concierge")
 
-
-# Serve /static/audio/<file>.wav so browsers can stream voice
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  
@@ -152,6 +148,7 @@ async def mindful_places(
 @app.get("/trends")
 async def travel_trends(location: str = Query("Pune")):
     return await get_trending_spots(location)
+
 
 
 

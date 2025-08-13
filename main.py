@@ -76,20 +76,49 @@ async def weather(location: str):
 
 # ─── AI Chat powered by Zephyr + optional voice ──────────────────────────────
 @app.get("/chat/experiences")
-async def chat_with_context(location: str = Query(...)):
+async def chat_with_context(
+    location: str = Query(..., description="City or location name"),
+    budget: str = Query(None, description="Budget level: budget, midrange, luxury"),
+    activity: str = Query(None, description="Type of activity: adventure, cultural, relaxation, nature"),
+    duration: str = Query(None, description="Trip duration: half_day, full_day, multi_day"),
+    motivation: str = Query(None, description="Reason for travel: honeymoon, family, friends, solo")
+):
     try:
+        # Fetch weather and experiences
         weather_data = await get_weather_and_risk(location)
         experiences = await search_experiences(location)
 
         experience_titles = [exp.get("title", "") for exp in experiences if exp.get("title")]
-        weather_info = f"Weather: {weather_data['summary']}, Temp: {weather_data['temperature_c']}°C, Prefer: {'Indoor' if weather_data['indoor_preferred'] else 'Outdoor'}"
+        weather_info = (
+            f"Weather: {weather_data['summary']}, "
+            f"Temp: {weather_data['temperature_c']}°C, "
+            f"Prefer: {'Indoor' if weather_data['indoor_preferred'] else 'Outdoor'}"
+        )
 
+        # Build personalization details
+        preferences = []
+        if budget:
+            preferences.append(f"Budget: {budget}")
+        if activity:
+            preferences.append(f"Activity Type: {activity}")
+        if duration:
+            preferences.append(f"Duration: {duration}")
+        if motivation:
+            preferences.append(f"Motivation: {motivation}")
+
+        preferences_str = " | ".join(preferences) if preferences else "No extra preferences given"
+
+        # Create AI prompt
         prompt = f"""
-You are a travel assistant helping a user visiting {location}. Based on the following context:
+You are a travel assistant helping a user visiting {location}.
+Context:
 - {weather_info}
 - Recommended experiences: {', '.join(experience_titles)}
+- User preferences: {preferences_str}
 
-Create a personalized 1-day itinerary with 3 stops. Use the format below exactly so it can be displayed clearly:
+Task:
+Create a personalized itinerary with exactly 3 stops that match the preferences above.
+Use this exact format:
 
 **Stop 1: [Name of activity]**
 [One-sentence description]
@@ -103,7 +132,7 @@ Create a personalized 1-day itinerary with 3 stops. Use the format below exactly
 
         raw_response = generate_zephyr_response(prompt)
 
-        # Parse stops from model response
+        # Parse stops from AI response
         pattern = r"\*\*Stop \d: (.*?)\*\*\n(.+?)(?=(\*\*Stop \d|$))"
         matches = re.findall(pattern, raw_response, re.DOTALL)
 
@@ -148,6 +177,7 @@ async def mindful_places(
 @app.get("/trends")
 async def travel_trends(location: str = Query("Pune")):
     return await get_trending_spots(location)
+
 
 
 

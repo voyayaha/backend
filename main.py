@@ -150,77 +150,6 @@ Use this exact format:
         raise HTTPException(status_code=500, detail=str(e))
     
 
-@app.get("/village/experiences")
-async def chat_village_experiences(
-    location: str = Query(..., description="Location for village tourism"),
-    budget: str = Query(None, description="Budget range"),
-    duration: str = Query(None, description="Duration of stay"),
-    activity_type: str = Query(None, description="Type of activities interested in"),
-    motivation: str = Query(None, description="Reason for visit, e.g. honeymoon, family trip")
-):
-    """
-    Tailored village tourism recommendations.
-    """
-    try:
-        # Fetch weather + travel risk for better recommendations
-        weather_data = await get_weather_and_risk(location)
-
-        # Fetch base experiences for that location
-        experiences = await search_experiences(location)
-
-        # Build context prompt for AI
-        experience_titles = [exp.get("title", "") for exp in experiences if exp.get("title")]
-        weather_info = f"Weather: {weather_data['summary']}, Temp: {weather_data['temperature_c']}°C, Prefer: {'Indoor' if weather_data['indoor_preferred'] else 'Outdoor'}"
-
-        prompt = f"""
-You are a travel assistant specializing in **village tourism**.
-User is visiting {location} with the following preferences:
-- Budget: {budget}
-- Duration: {duration}
-- Activity Type: {activity_type}
-- Motivation: {motivation}
-- {weather_info}
-
-Recommended experiences in the area: {', '.join(experience_titles)}
-
-Create a **personalized 1-day village itinerary** with 3 stops, focusing on:
-- Nostalgic experiences like 'Nani ka Gaon', peepal trees, rivers, fresh farm food
-- Local arts (pottery, weaving, folk music)
-- Farm activities (fruit picking, vegetable harvesting)
-- Self-sustainability practices
-- Community life
-
-**Stop 1: [Name of activity]**
-[One-sentence description]
-
-**Stop 2: [Name of activity]**
-[One-sentence description]
-
-**Stop 3: [Name of activity]**
-[One-sentence description]
-"""
-
-        raw_response = generate_zephyr_response(prompt)
-
-        # Parse stops
-        import re
-        pattern = r"\*\*Stop \d: (.*?)\*\*\n(.+?)(?=(\*\*Stop \d|$))"
-        matches = re.findall(pattern, raw_response, re.DOTALL)
-
-        stops = [
-            {
-                "title": title.strip(),
-                "description": description.strip()
-            }
-            for title, description, _ in matches
-        ]
-
-        return {"stops": stops}
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @app.get("/social")
 async def social(location: str = Query(...), limit: int = 5):
     return await scrape_social(location, limit)
@@ -248,8 +177,6 @@ async def mindful_places(
 @app.get("/trends")
 async def travel_trends(location: str = Query("Pune")):
     return await get_trending_spots(location)
-
-
 
 
 

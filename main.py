@@ -175,39 +175,36 @@ async def mindful_places(
 
 @app.get("/yoga-events")
 async def get_yoga_events(
-    location: str = Query("India", description="Location to search yoga events in"),
-    start_date: str | None = Query(None, description="Start date in ISO format, e.g. 2025-08-16T00:00:00Z"),
-    end_date: str | None = Query(None, description="End date in ISO format, e.g. 2025-08-31T23:59:59Z")
+    location: str = "India",
+    start_date: str | None = None,
+    end_date: str | None = None
 ):
-    """
-    Fetch yoga & meditation events from Eventbrite.
-    Defaults to India, but supports dynamic location and optional date range.
-    """
-
     url = "https://www.eventbriteapi.com/v3/events/search/"
     params = {
         "q": "yoga meditation",
         "sort_by": "date",
-        "location.address": location
+        "location.address": location,
     }
 
-    # Add date filters if provided
-    if start_date:
+    if start_date and end_date:
         params["start_date.range_start"] = start_date
-    if end_date:
         params["start_date.range_end"] = end_date
 
     headers = {"Authorization": f"Bearer {EVENTBRITE_TOKEN}"}
 
     async with httpx.AsyncClient() as client:
         r = await client.get(url, headers=headers, params=params)
-        r.raise_for_status()
+        if r.status_code != 200:
+            # Return clean error instead of crashing
+            return {"error": r.status_code, "details": r.text}
         return r.json()
+
 
 # ─── Travel trend predictions or data ─────────────────────────────────────
 @app.get("/trends")
 async def travel_trends(location: str = Query("Pune")):
     return await get_trending_spots(location)
+
 
 
 

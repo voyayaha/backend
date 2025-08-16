@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
@@ -7,8 +7,6 @@ from hotels import search_hotels
 from social import scrape_social
 from db import init_db, save_message
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
-from fastapi import FastAPI, Query
-from fastapi.middleware.cors import CORSMiddleware
 from experiences import search_experiences
 from weather import get_weather_and_risk
 from travelrisk import get_custom_travel_risk
@@ -23,25 +21,22 @@ from chat import register_chat_routes
 from fastapi import FastAPI, HTTPException, Query
 from typing import List
 import re
-
-
-
-
+import httpx
 
 
 load_dotenv()   # pull API keys from .env
 
-
 EVENTBRITE_TOKEN = os.getenv("EVENTBRITE_TOKEN")
 
-
-
-
 app = FastAPI(title="Voyayaha – AI Travel Concierge")
+origins = [
+    "https://voyayaha.lovestoblog.com",  # your frontend
+    "http://localhost:5173",             # local dev (vite)
+]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  
+    allow_origins=origins,  
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -179,17 +174,29 @@ async def mindful_places(
         raise HTTPException(status_code=500, detail=f"Error fetching mindful places: {e}")
 
 @app.get("/yoga-events")
-async def get_yoga_events(location: str = Query("India", description="Location to search yoga events in")):
+async def get_yoga_events(
+    location: str = Query("India", description="Location to search yoga events in"),
+    start_date: str | None = Query(None, description="Start date in ISO format, e.g. 2025-08-16T00:00:00Z"),
+    end_date: str | None = Query(None, description="End date in ISO format, e.g. 2025-08-31T23:59:59Z")
+):
     """
     Fetch yoga & meditation events from Eventbrite.
-    If no location is provided, defaults to 'India'.
+    Defaults to India, but supports dynamic location and optional date range.
     """
+
     url = "https://www.eventbriteapi.com/v3/events/search/"
     params = {
         "q": "yoga meditation",
         "sort_by": "date",
         "location.address": location
     }
+
+    # Add date filters if provided
+    if start_date:
+        params["start_date.range_start"] = start_date
+    if end_date:
+        params["start_date.range_end"] = end_date
+
     headers = {"Authorization": f"Bearer {EVENTBRITE_TOKEN}"}
 
     async with httpx.AsyncClient() as client:
@@ -201,6 +208,7 @@ async def get_yoga_events(location: str = Query("India", description="Location t
 @app.get("/trends")
 async def travel_trends(location: str = Query("Pune")):
     return await get_trending_spots(location)
+
 
 
 

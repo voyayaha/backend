@@ -175,7 +175,7 @@ async def mindful_places(
 
 @app.get("/yoga-events")
 async def get_yoga_events(
-    location: str = Query(..., description="City or location name"),
+    location: str = Query(..., alias="location.address", description="City or location name"),
     start_date: str | None = Query(None, alias="start_date.range_start"),
     end_date: str | None = Query(None, alias="start_date.range_end"),
 ):
@@ -207,6 +207,7 @@ async def get_yoga_events(
 @app.get("/trends")
 async def travel_trends(location: str = Query("Pune")):
     return await get_trending_spots(location)
+
 
 
 

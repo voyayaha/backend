@@ -175,10 +175,13 @@ async def mindful_places(
 
 @app.get("/yoga-events")
 async def get_yoga_events(
-    location: str = "India",
-    start_date: str | None = None,
-    end_date: str | None = None
+    location: str = Query(..., description="City or location name"),
+    start_date: str | None = Query(None, alias="start_date.range_start"),
+    end_date: str | None = Query(None, alias="start_date.range_end"),
 ):
+    """
+    Fetch yoga & meditation events from Eventbrite.
+    """
     url = "https://www.eventbriteapi.com/v3/events/search/"
     params = {
         "q": "yoga meditation",
@@ -186,8 +189,9 @@ async def get_yoga_events(
         "location.address": location,
     }
 
-    if start_date and end_date:
+    if start_date:
         params["start_date.range_start"] = start_date
+    if end_date:
         params["start_date.range_end"] = end_date
 
     headers = {"Authorization": f"Bearer {EVENTBRITE_TOKEN}"}
@@ -195,7 +199,6 @@ async def get_yoga_events(
     async with httpx.AsyncClient() as client:
         r = await client.get(url, headers=headers, params=params)
         if r.status_code != 200:
-            # Return clean error instead of crashing
             return {"error": r.status_code, "details": r.text}
         return r.json()
 
@@ -204,6 +207,7 @@ async def get_yoga_events(
 @app.get("/trends")
 async def travel_trends(location: str = Query("Pune")):
     return await get_trending_spots(location)
+
 
 
 

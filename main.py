@@ -26,8 +26,6 @@ import httpx
 
 load_dotenv()   # pull API keys from .env
 
-EVENTBRITE_TOKEN = os.getenv("EVENTBRITE_TOKEN")
-
 app = FastAPI(title="Voyayaha – AI Travel Concierge")
 origins = [
     "https://voyayaha.lovestoblog.com",  # your frontend
@@ -173,32 +171,12 @@ async def mindful_places(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching mindful places: {e}")
 
-@app.get("/yoga-events")
-async def get_yoga_events(
-    location: str = Query(..., alias="location.address", description="City or location name"),
-):
-    """
-    Fetch upcoming yoga & meditation events from Eventbrite by city/location.
-    """
-    url = "https://www.eventbriteapi.com/v3/events/search/"
-    params = {
-        "q": "yoga meditation",
-        "sort_by": "date",
-        "location.address": location,
-    }
-
-    headers = {"Authorization": f"Bearer {EVENTBRITE_TOKEN}"}
-
-    async with httpx.AsyncClient() as client:
-        r = await client.get(url, headers=headers, params=params)
-        if r.status_code != 200:
-            return {"error": r.status_code, "details": r.text}
-        return r.json()
 
 # ─── Travel trend predictions or data ─────────────────────────────────────
 @app.get("/trends")
 async def travel_trends(location: str = Query("Pune")):
     return await get_trending_spots(location)
+
 
 
 

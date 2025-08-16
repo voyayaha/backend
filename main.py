@@ -31,7 +31,9 @@ import re
 
 load_dotenv()   # pull API keys from .env
 
+
 EVENTBRITE_TOKEN = os.getenv("EVENTBRITE_TOKEN")
+
 
 
 
@@ -177,24 +179,29 @@ async def mindful_places(
         raise HTTPException(status_code=500, detail=f"Error fetching mindful places: {e}")
 
 @app.get("/yoga-events")
-async def get_yoga_events():
+async def get_yoga_events(location: str = Query("India", description="Location to search yoga events in")):
+    """
+    Fetch yoga & meditation events from Eventbrite.
+    If no location is provided, defaults to 'India'.
+    """
     url = "https://www.eventbriteapi.com/v3/events/search/"
     params = {
         "q": "yoga meditation",
         "sort_by": "date",
-        "location.address": "India"
+        "location.address": location
     }
     headers = {"Authorization": f"Bearer {EVENTBRITE_TOKEN}"}
+
     async with httpx.AsyncClient() as client:
         r = await client.get(url, headers=headers, params=params)
         r.raise_for_status()
         return r.json()
 
-
 # ─── Travel trend predictions or data ─────────────────────────────────────
 @app.get("/trends")
 async def travel_trends(location: str = Query("Pune")):
     return await get_trending_spots(location)
+
 
 
 

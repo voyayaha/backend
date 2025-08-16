@@ -176,11 +176,9 @@ async def mindful_places(
 @app.get("/yoga-events")
 async def get_yoga_events(
     location: str = Query(..., alias="location.address", description="City or location name"),
-    start_date: str | None = Query(None, alias="start_date.range_start"),
-    end_date: str | None = Query(None, alias="start_date.range_end"),
 ):
     """
-    Fetch yoga & meditation events from Eventbrite.
+    Fetch upcoming yoga & meditation events from Eventbrite by city/location.
     """
     url = "https://www.eventbriteapi.com/v3/events/search/"
     params = {
@@ -188,11 +186,6 @@ async def get_yoga_events(
         "sort_by": "date",
         "location.address": location,
     }
-
-    if start_date:
-        params["start_date.range_start"] = start_date
-    if end_date:
-        params["start_date.range_end"] = end_date
 
     headers = {"Authorization": f"Bearer {EVENTBRITE_TOKEN}"}
 
@@ -202,11 +195,11 @@ async def get_yoga_events(
             return {"error": r.status_code, "details": r.text}
         return r.json()
 
-
 # ─── Travel trend predictions or data ─────────────────────────────────────
 @app.get("/trends")
 async def travel_trends(location: str = Query("Pune")):
     return await get_trending_spots(location)
+
 
 
 

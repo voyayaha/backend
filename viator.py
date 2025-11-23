@@ -5,51 +5,102 @@ import os
 
 VIATOR_API_KEY = os.getenv("VIATOR_TOKEN")
 
-async def search_viator_activities(query: str, location: str, checkin: Optional[str] = None, checkout: Optional[str] = None):
+BASE_HEADERS = {
+    "Accept": "application/json",
+    "exp-api-key": VIATOR_API_KEY
+}
+
+# ───────────────────────────────────────────────
+# 1. Resolve ANY city name → destinationId (global)
+# ───────────────────────────────────────────────
+async def get_destination_id(city: str) -> Optional[str]:
+    url = f"https://api.viator.com/partner/v2/search/geocodes?query={city}"
+
     try:
-        start_date = checkin or datetime.today().strftime("%Y-%m-%d")
-        end_date = checkout or (datetime.today() + timedelta(days=7)).strftime("%Y-%m-%d")
-
-        url = "https://api.viator.com/partner/products/search"
-
-        headers = {
-            "Accept": "application/json;version=2.0",
-            "Accept-Language": "en-US",
-            "Content-Type": "application/json",
-            "exp-api-key": VIATOR_API_KEY
-        }
-
-        payload = {
-            "filtering": {
-                "text": f"{query} {location}",
-                "startDate": start_date,
-                "endDate": end_date
-            },
-            "pagination": {
-                "start": 1,
-                "count": 1
-            },
-            "currency": "USD"
-        }
-
         async with httpx.AsyncClient() as client:
-            response = await client.post(url, headers=headers, json=payload)
-            response.raise_for_status()
-            result = response.json()
+            res = await client.get(url, headers=BASE_HEADERS, timeout=15)
+            res.raise_for_status()
+            data = res.json().get("data", [])
 
-        products = result.get("data", [])
-        if not products:
-            return None
+            if data and "destinationId" in data[0]:
+                return data[0]["destinationId"]
 
-        product = products[0]
-        return {
-            "title": product.get("title", query),
-            "description": product.get("description", f"Explore {query} in {location}."),
-            "image": product.get("images", [{}])[0].get("url", ""),
-            "rating": product.get("rating", 0),
-            "price": product.get("fromPrice", {}).get("amountFormatted", "N/A"),
-        }
-
-    except Exception as e:
-        print(f"Viator API Error: {e}")
         return None
+
+    except Exception:
+        return None
+
+
+# ───────────────────────────────────────────────
+# 2. Universal safe request wrapper (no crashes)
+# ───────────────────────────────────────────────
+async def safe_viator(url: str, method="GET", payload=None):
+    try:
+        async with httpx.AsyncClient() as client:
+            if method == "GET":
+                res = await client.get(url, headers=BASE_HEADERS, timeout=20)
+            else:
+                res = await client.post(url, headers=BASE_HEADERS, json=payload, timeout=20)
+
+            if res.status_code == 500:
+                return {"data": [], "error": "viator_500"}
+
+            res.raise_for_status()
+            return res.json()
+
+    except Exception:
+        return {"data": [], "error": "viator_exception"}
+
+
+# ───────────────────────────────────────────────
+# 3. MAIN FUNCTION: Global Viator Activity Search
+# ───────────────────────────────────────────────
+async def search_viator_activities(
+    query: str,
+    location: str,
+    checkin: Optional[str] = None,
+    checkout: Optional[str] = None,
+    limit: int = 6
+):
+    # Dates
+    start_date = checkin or datetime.today().strftime("%Y-%m-%d")
+    end_date = checkout or (datetime.today() + timedelta(days=7)).strftime("%Y-%m-%d")
+
+    # First try to fetch destinationId (best results)
+    dest_id = await get_destination_id(location)
+
+    if dest_id:
+        # Use destinationId for most accurate search
+        url = (
+            f"https://api.viator.com/partner/v2/search/products?"
+            f"destinationId={dest_id}&currency=USD&sort=RECOMMENDED&count={limit}"
+        )
+        data = await safe_viator(url)
+    else:
+        # Fallback: text search
+        url = (
+            f"https://api.viator.com/partner/v2/search/products?"
+            f"query={location}&currency=USD&sort=RECOMMENDED&count={limit}"
+        )
+        data = await safe_viator(url)
+
+    products = data.get("data", [])
+
+    # If Viator returns nothing
+    if not products:
+        return []
+
+    # Clean & standardize
+    results = []
+    for p in products:
+        results.append({
+            "title": p.get("title", ""),
+            "description": p.get("description", f"Explore {location}."),
+            "image": p.get("images", [{}])[0].get("url", ""),
+            "rating": p.get("rating", None),
+            "price": p.get("fromPrice", {}).get("amount", None),
+            "priceFormatted": p.get("fromPrice", {}).get("amountFormatted", None),
+            "webURL": p.get("webURL", "")
+        })
+
+    return results

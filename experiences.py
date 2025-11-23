@@ -1,75 +1,70 @@
-"""
-Unified global experiences search using the new Viator API wrapper.
-Automatically applies weather-based indoor/outdoor filtering.
-"""
-
 import os
-from typing import Optional
 import httpx
-
 from weather import get_weather_and_risk
-from viator import search_viator_activities  # <-- use the new global-safe wrapper
+
+VIATOR_TOKEN = os.getenv("VIATOR_TOKEN")
+
+HEADERS = {
+    "exp-api-key": VIATOR_TOKEN,
+    "Accept": "application/json"
+}
+
+VIATOR_URL = "https://api.viator.com/partner/v2/search/products"
 
 
-async def search_experiences(
-    location: str,
-    query: str = "",
-    date: Optional[str] = None,
-    per_page: int = 6
-):
+async def search_experiences(location: str, query: str = "", date: str | None = None, per_page: int = 6):
     """
-    Returns curated experiences for any city worldwide.
-    Uses the improved 'search_viator_activities' function (destinationId → text fallback).
-    Safe for all countries and all city spellings.
+    Fully corrected Viator v2 search:
+    - Uses ONLY valid parameters
+    - Fully global (no destId)
+    - Weather-filtered
     """
 
     try:
-        # 1. Get indoor/outdoor preference from weather module
-        weather = await get_weather_and_risk(location)
-        indoor_preferred = weather.get("indoor_preferred", False)
+        # Weather logic (optional)
+        weather_data = await get_weather_and_risk(location)
+        indoor = weather_data["indoor_preferred"]
 
-        # 2. Fetch activities (robust global method)
-        viator_results = await search_viator_activities(
-            query=query,
-            location=location,
-            checkin=date,
-            checkout=date,
-            limit=per_page
-        )
+        # CORRECT v2 PARAMETERS
+        params = {
+            "q": f"{location} {query}".strip(),
+            "currencyCode": "USD",
+            "sortOrder": "RECOMMENDED",
+            "page": 1,
+            "pageSize": per_page
+        }
 
-        if not viator_results:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(VIATOR_URL, params=params, headers=HEADERS)
+
+            # If Viator server error → return safe empty list
+            if r.status_code >= 500:
+                print("VIATOR 500 ERROR:", r.text)
+                return []
+
+            r.raise_for_status()
+            data = r.json()
+
+        products = data.get("data", {}).get("products", [])
+        if not products:
             return []
 
-        # 3. Weather-aware filtering
-        indoor_keywords = ["museum", "temple", "palace", "spa", "cafe", "aquarium", "gallery", "indoor"]
-        outdoor_keywords = ["hiking", "sunset", "trek", "cruise", "safari", "beach", "bike", "kayak", "outdoor"]
-
-        def is_indoor(item):
-            text = (
-                (item.get("title", "") or "") + " " +
-                (item.get("description", "") or "")
-            ).lower()
-            return any(k in text for k in indoor_keywords)
-
-        def is_outdoor(item):
-            text = (
-                (item.get("title", "") or "") + " " +
-                (item.get("description", "") or "")
-            ).lower()
-            return any(k in text for k in outdoor_keywords)
-
+        # Weather-based filtering
         filtered = []
-        for item in viator_results:
-            if indoor_preferred and is_indoor(item):
-                filtered.append(item)
-            elif not indoor_preferred and is_outdoor(item):
-                filtered.append(item)
+        for item in products:
+            text = (
+                item.get("title", "") +
+                item.get("shortDescription", "")
+            ).lower()
 
-        # 4. Fallback if filtering yields nothing
-        if not filtered:
-            return viator_results[:per_page]
+            if indoor:
+                if any(w in text for w in ["museum", "indoor", "spa", "cooking", "temple", "art"]):
+                    filtered.append(item)
+            else:
+                if any(w in text for w in ["trek", "cruise", "outdoor", "bike", "sunset", "safari"]):
+                    filtered.append(item)
 
-        return filtered[:per_page]
+        return filtered[:per_page] if filtered else products[:per_page]
 
     except Exception as e:
         print("Experience error:", e)

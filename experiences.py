@@ -1,70 +1,73 @@
-"""Search local experiences via Viator Partner API (free affiliate key)"""
-import os, httpx
+"""
+Unified global experiences search using the new Viator API wrapper.
+Automatically applies weather-based indoor/outdoor filtering.
+"""
+
+import os
+from typing import Optional
+import httpx
+
 from weather import get_weather_and_risk
+from viator import search_viator_activities  # <-- use the new global-safe wrapper
 
-VIATOR_BASE = "https://api.viator.com/partner/v2"
-VIATOR_TOKEN = os.getenv("VIATOR_TOKEN")
 
-HEADERS = {
-    "exp-api-key": VIATOR_TOKEN,
-    "Accept": "application/json"
-}
-
-async def search_experiences(location: str, query: str = "", date: str | None = None, per_page: int = 6):
+async def search_experiences(
+    location: str,
+    query: str = "",
+    date: Optional[str] = None,
+    per_page: int = 6
+):
     """
-    Return a list of curated activities for a given city using Viator v2 API.
-    Works globally — no numerical destId required.
-    Applies weather-based indoor/outdoor filtering.
+    Returns curated experiences for any city worldwide.
+    Uses the improved 'search_viator_activities' function (destinationId → text fallback).
+    Safe for all countries and all city spellings.
     """
+
     try:
-        # Weather check → indoor/outdoor preference
-        weather_data = await get_weather_and_risk(location)
-        indoor = weather_data.get("indoor_preferred", False)
+        # 1. Get indoor/outdoor preference from weather module
+        weather = await get_weather_and_risk(location)
+        indoor_preferred = weather.get("indoor_preferred", False)
 
-        # Build Viator v2 request (NO destId)
-        endpoint = f"{VIATOR_BASE}/search/products"
+        # 2. Fetch activities (robust global method)
+        viator_results = await search_viator_activities(
+            query=query,
+            location=location,
+            checkin=date,
+            checkout=date,
+            limit=per_page
+        )
 
-        search_query = f"{location} {query}".strip()
+        if not viator_results:
+            return []
 
-        params = {
-            "query": search_query,
-            "currency": "USD",
-            "sort": "RECOMMENDED",
-            "topX": per_page
-        }
+        # 3. Weather-aware filtering
+        indoor_keywords = ["museum", "temple", "palace", "spa", "cafe", "aquarium", "gallery", "indoor"]
+        outdoor_keywords = ["hiking", "sunset", "trek", "cruise", "safari", "beach", "bike", "kayak", "outdoor"]
 
-        if date:
-            params["startDate"] = date  # Only add date if provided
-
-        async with httpx.AsyncClient(timeout=15) as client:
-            r = await client.get(endpoint, params=params, headers=HEADERS)
-            r.raise_for_status()
-            data = r.json()
-
-        results = data.get("products", [])
-
-        # --- Weather filtering ---
-        filtered = []
-        for item in results:
+        def is_indoor(item):
             text = (
-                (item.get("title") or "") + " " +
-                (item.get("description") or "") + " " +
-                (item.get("subtitle") or "")
+                (item.get("title", "") or "") + " " +
+                (item.get("description", "") or "")
             ).lower()
+            return any(k in text for k in indoor_keywords)
 
-            # Indoor-friendly keywords
-            indoor_keywords = ["museum", "cooking", "temple", "palace", "spa", "indoor", "class"]
-            # Outdoor-friendly keywords
-            outdoor_keywords = ["hiking", "sunset", "cruise", "bike", "safari", "outdoor", "kayak"]
+        def is_outdoor(item):
+            text = (
+                (item.get("title", "") or "") + " " +
+                (item.get("description", "") or "")
+            ).lower()
+            return any(k in text for k in outdoor_keywords)
 
-            if indoor and any(k in text for k in indoor_keywords):
+        filtered = []
+        for item in viator_results:
+            if indoor_preferred and is_indoor(item):
                 filtered.append(item)
-            elif not indoor and any(k in text for k in outdoor_keywords):
+            elif not indoor_preferred and is_outdoor(item):
                 filtered.append(item)
 
-        # If filtering removed everything → fallback to first results
+        # 4. Fallback if filtering yields nothing
         if not filtered:
-            return results[:per_page]
+            return viator_results[:per_page]
 
         return filtered[:per_page]
 

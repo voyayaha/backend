@@ -30,6 +30,8 @@ app = FastAPI(title="Voyayaha – AI Travel Concierge")
 origins = [
     "https://voyayaha.lovestoblog.com",  # your frontend
     "http://localhost:5173",             # local dev (vite)
+    "https://voyayaha.com",
+
 ]
 
 app.add_middleware(
@@ -179,6 +181,7 @@ async def mindful_places(
 @app.get("/trends")
 async def travel_trends(location: str = Query("Pune")):
     return await get_trending_spots(location)
+
 
 
 

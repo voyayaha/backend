@@ -2,52 +2,71 @@
 import os, httpx
 from weather import get_weather_and_risk
 
-VIATOR_BASE = "https://api.viator.com/partner/v1"
+VIATOR_BASE = "https://api.viator.com/partner/v2"
 VIATOR_TOKEN = os.getenv("VIATOR_TOKEN")
+
 HEADERS = {
     "exp-api-key": VIATOR_TOKEN,
-    "Content-Type": "application/json"
+    "Accept": "application/json"
 }
 
 async def search_experiences(location: str, query: str = "", date: str | None = None, per_page: int = 6):
-    """Return a list of curated activities for a city or landmark based on weather (indoor/outdoor)."""
+    """
+    Return a list of curated activities for a given city using Viator v2 API.
+    Works globally — no numerical destId required.
+    Applies weather-based indoor/outdoor filtering.
+    """
     try:
-        # Fetch weather to decide indoor/outdoor
+        # Weather check → indoor/outdoor preference
         weather_data = await get_weather_and_risk(location)
-        indoor = weather_data["indoor_preferred"]
+        indoor = weather_data.get("indoor_preferred", False)
 
-        # Build query
-        endpoint = f"{VIATOR_BASE}/product/search"
+        # Build Viator v2 request (NO destId)
+        endpoint = f"{VIATOR_BASE}/search/products"
+
+        search_query = f"{location} {query}".strip()
+
         params = {
-            "destId": location,  # Assumes numeric Viator destination ID
-            "keyword": query,
-            "startDate": date,
-            "topX": per_page,
-            "currencyCode": "USD",
-            "sortOrder": "RECOMMENDED"
+            "query": search_query,
+            "currency": "USD",
+            "sort": "RECOMMENDED",
+            "topX": per_page
         }
 
-        async with httpx.AsyncClient(timeout=10) as client:
-            # First attempt with destId
-            r = await client.get(endpoint, params=params, headers=HEADERS)
-            if r.status_code == 400:
-                params.pop("destId")  # Fallback to keyword-only
-                r = await client.get(endpoint, params=params, headers=HEADERS)
+        if date:
+            params["startDate"] = date  # Only add date if provided
 
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(endpoint, params=params, headers=HEADERS)
             r.raise_for_status()
             data = r.json()
-            results = data.get("data", {}).get("products", [])
 
-            # Filter based on weather
-            filtered = []
-            for item in results:
-                text = (item.get("title", "") + item.get("shortDescription", "")).lower()
-                if indoor and any(w in text for w in ["museum", "cooking", "temple", "palace", "indoor"]):
-                    filtered.append(item)
-                elif not indoor and any(w in text for w in ["hiking", "sunset", "cruise", "bike", "safari", "outdoor"]):
-                    filtered.append(item)
+        results = data.get("products", [])
 
-            return filtered[:per_page] if filtered else results[:per_page]
+        # --- Weather filtering ---
+        filtered = []
+        for item in results:
+            text = (
+                (item.get("title") or "") + " " +
+                (item.get("description") or "") + " " +
+                (item.get("subtitle") or "")
+            ).lower()
+
+            # Indoor-friendly keywords
+            indoor_keywords = ["museum", "cooking", "temple", "palace", "spa", "indoor", "class"]
+            # Outdoor-friendly keywords
+            outdoor_keywords = ["hiking", "sunset", "cruise", "bike", "safari", "outdoor", "kayak"]
+
+            if indoor and any(k in text for k in indoor_keywords):
+                filtered.append(item)
+            elif not indoor and any(k in text for k in outdoor_keywords):
+                filtered.append(item)
+
+        # If filtering removed everything → fallback to first results
+        if not filtered:
+            return results[:per_page]
+
+        return filtered[:per_page]
 
     except Exception as e:
         print("Experience error:", e)

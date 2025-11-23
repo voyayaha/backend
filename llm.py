@@ -1,12 +1,12 @@
 import os
 import requests
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_RECOMMENDATION_KEY = os.getenv("GROQ_RECOMMENDATION_KEY")
 MODEL_ID = "llama3-70b-8192"
 
 API_URL = "https://api.groq.com/openai/v1/chat/completions"
 HEADERS = {
-    "Authorization": f"Bearer {GROQ_API_KEY}",
+    "Authorization": f"Bearer {GROQ_RECOMMENDATION_KEY}",
     "Content-Type": "application/json"
 }
 

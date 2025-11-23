@@ -10,7 +10,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 from experiences import search_experiences
 from weather import get_weather_and_risk
 from travelrisk import get_custom_travel_risk
-from llm import generate_zephyr_response
+from llm import get_global_city_context, generate_zephyr_response
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -86,6 +86,8 @@ async def chat_with_context(
         # Fetch weather and experiences
         weather_data = await get_weather_and_risk(location)
         experiences = await search_experiences(location)
+        context = get_global_city_context(location)
+
 
         experience_titles = [exp.get("title", "") for exp in experiences if exp.get("title")]
         weather_info = (
@@ -113,6 +115,7 @@ You are a travel assistant helping a user visiting {location}.
 Context:
 - {weather_info}
 - Recommended experiences: {', '.join(experience_titles)}
+- City facts: {context}
 - User preferences: {preferences_str}
 
 Task:
@@ -176,6 +179,7 @@ async def mindful_places(
 @app.get("/trends")
 async def travel_trends(location: str = Query("Pune")):
     return await get_trending_spots(location)
+
 
 
 

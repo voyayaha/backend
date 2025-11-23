@@ -87,7 +87,7 @@ async def chat_with_context(
     try:
         # Fetch weather and experiences
         weather_data = await get_weather_and_risk(location)
-        experiences = await search_experiences(location)
+        experiences = await search_experiences(location, query="")
         context = get_global_city_context(location)
 
 
@@ -181,6 +181,7 @@ async def mindful_places(
 @app.get("/trends")
 async def travel_trends(location: str = Query("Pune")):
     return await get_trending_spots(location)
+
 
 
 

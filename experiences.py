@@ -14,58 +14,67 @@ VIATOR_URL = "https://api.viator.com/partner/v2/search/products"
 
 async def search_experiences(location: str, query: str = "", date: str | None = None, per_page: int = 6):
     """
-    Fully corrected Viator v2 search:
-    - Uses ONLY valid parameters
-    - Fully global (no destId)
-    - Weather-filtered
+    Fully compliant Viator v2 search.
+    - Uses only VALID parameters
+    - Works globally (any city, non-numeric)
+    - Handles 500 errors gracefully
     """
 
+    # Combine search terms
+    q_full = f"{location} {query}".strip()
+
+    # Build VALID Viator v2 parameters
+    params = {
+        "q": q_full,
+        "currencyCode": "USD",
+        "sortOrder": "RECOMMENDED",
+        "page": 1,
+        "pageSize": per_page
+    }
+
+    if date:
+        params["startDate"] = date
+
     try:
-        # Weather logic (optional)
+        # Weather preference
         weather_data = await get_weather_and_risk(location)
-        indoor = weather_data["indoor_preferred"]
+        indoor = weather_data.get("indoor_preferred", False)
 
-        # CORRECT v2 PARAMETERS
-        params = {
-            "q": f"{location} {query}".strip(),
-            "currencyCode": "USD",
-            "sortOrder": "RECOMMENDED",
-            "page": 1,
-            "pageSize": per_page
-        }
-
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with httpx.AsyncClient(timeout=20) as client:
             r = await client.get(VIATOR_URL, params=params, headers=HEADERS)
 
-            # If Viator server error → return safe empty list
+            # Viator Internal Error
             if r.status_code >= 500:
                 print("VIATOR 500 ERROR:", r.text)
-                return []
+                return []   # avoid crashing
 
             r.raise_for_status()
             data = r.json()
 
-        products = data.get("data", {}).get("products", [])
-        if not products:
-            return []
-
-        # Weather-based filtering
-        filtered = []
-        for item in products:
-            text = (
-                item.get("title", "") +
-                item.get("shortDescription", "")
-            ).lower()
-
-            if indoor:
-                if any(w in text for w in ["museum", "indoor", "spa", "cooking", "temple", "art"]):
-                    filtered.append(item)
-            else:
-                if any(w in text for w in ["trek", "cruise", "outdoor", "bike", "sunset", "safari"]):
-                    filtered.append(item)
-
-        return filtered[:per_page] if filtered else products[:per_page]
-
     except Exception as e:
         print("Experience error:", e)
         return []
+
+    # Product extraction
+    products = data.get("data", {}).get("products", [])
+    if not products:
+        return []
+
+    # Weather filtering
+    filtered = []
+    indoor_words  = ["museum", "spa", "cooking", "temple", "indoor", "art", "gallery"]
+    outdoor_words = ["cruise", "trek", "bike", "sunset", "safari", "outdoor"]
+
+    for item in products:
+        text = (
+            (item.get("title") or "") + " " +
+            (item.get("shortDescription") or "")
+        ).lower()
+
+        if indoor and any(w in text for w in indoor_words):
+            filtered.append(item)
+        elif not indoor and any(w in text for w in outdoor_words):
+            filtered.append(item)
+
+    # Fallback if filter becomes empty
+    return filtered[:per_page] if filtered else products[:per_page]

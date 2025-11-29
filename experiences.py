@@ -2,79 +2,142 @@ import os
 import httpx
 from weather import get_weather_and_risk
 
-VIATOR_TOKEN = os.getenv("VIATOR_TOKEN")
+YELP_KEY = os.getenv("YELP_API_KEY")
+OTM_KEY = os.getenv("OPENTRIPMAP_KEY")
 
-HEADERS = {
-    "exp-api-key": VIATOR_TOKEN,
-    "Accept": "application/json"
-}
-
-VIATOR_URL = "https://api.viator.com/partner/v2/search/products"
+YELP_URL = "https://api.yelp.com/v3/businesses/search"
+OTM_GEOCODE_URL = "https://api.opentripmap.com/0.1/en/places/geoname"
+OTM_RADIUS_URL = "https://api.opentripmap.com/0.1/en/places/radius"
 
 
-async def search_experiences(location: str, query: str = "", date: str | None = None, per_page: int = 6):
+# ──────────────────────────────────────────────
+# Helper: Convert city name → lat/lon via OTM
+# ──────────────────────────────────────────────
+async def geocode_city(city: str):
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.get(
+            OTM_GEOCODE_URL,
+            params={"name": city, "apikey": OTM_KEY}
+        )
+        data = r.json()
+        return data.get("lat"), data.get("lon")
+
+
+# ──────────────────────────────────────────────
+# Experience Search (Yelp + OpenTripMap)
+# ──────────────────────────────────────────────
+async def search_experiences(location: str, query: str = "", date: str | None = None, limit: int = 6):
     """
-    Fully compliant Viator v2 search.
-    - Uses only VALID parameters
-    - Works globally (any city, non-numeric)
-    - Handles 500 errors gracefully
+    Replacement for Viator.
+    1. Yelp Fusion → places, activities, food, experiences
+    2. Falls back to OpenTripMap if Yelp returns nothing
     """
 
-    # Combine search terms
-    q_full = f"{location} {query}".strip()
+    # Weather preference for filtering
+    weather = await get_weather_and_risk(location)
+    indoor_preferred = weather.get("indoor_preferred", False)
 
-    # Build VALID Viator v2 parameters
-    params = {
-        "q": q_full,
-        "currencyCode": "USD",
-        "sortOrder": "RECOMMENDED",
-        "page": 1,
-        "pageSize": per_page
-    }
-
-    if date:
-        params["startDate"] = date
-
+    # ────────────────────────────────
+    # Step 1: Yelp Fusion search
+    # ────────────────────────────────
     try:
-        # Weather preference
-        weather_data = await get_weather_and_risk(location)
-        indoor = weather_data.get("indoor_preferred", False)
+        headers = {"Authorization": f"Bearer {YELP_KEY}"}
 
-        async with httpx.AsyncClient(timeout=20) as client:
-            r = await client.get(VIATOR_URL, params=params, headers=HEADERS)
+        params = {
+            "location": location,
+            "term": query if query else "things to do",
+            "sort_by": "best_match",
+            "limit": limit
+        }
 
-            # Viator Internal Error
-            if r.status_code >= 500:
-                print("VIATOR 500 ERROR:", r.text)
-                return []   # avoid crashing
+        async with httpx.AsyncClient(timeout=12) as client:
+            yelp_response = await client.get(YELP_URL, headers=headers, params=params)
+            yelp_response.raise_for_status()
+            yelp_data = yelp_response.json()
 
-            r.raise_for_status()
-            data = r.json()
+        businesses = yelp_data.get("businesses", [])
+
+        # Weather-based filtering
+        indoor_keywords = ["museum", "spa", "cafe", "gallery", "indoor"]
+        outdoor_keywords = ["park", "hike", "trek", "outdoor", "beach"]
+
+        def matches_weather(biz):
+            name = biz.get("name", "").lower()
+            cats = " ".join([c["title"].lower() for c in biz.get("categories", [])])
+
+            text = f"{name} {cats}"
+
+            if indoor_preferred:
+                return any(w in text for w in indoor_keywords)
+            else:
+                return any(w in text for w in outdoor_keywords)
+
+        filtered = [b for b in businesses if matches_weather(b)]
+
+        if filtered:
+            return [
+                {
+                    "title": b["name"],
+                    "rating": b.get("rating", None),
+                    "address": ", ".join(b["location"].get("display_address", [])),
+                    "image": b.get("image_url", ""),
+                    "categories": [c["title"] for c in b.get("categories", [])],
+                    "source": "Yelp"
+                }
+                for b in filtered[:limit]
+            ]
+
+        # Fallback: return top results (no weather match)
+        if businesses:
+            return [
+                {
+                    "title": b["name"],
+                    "rating": b.get("rating", None),
+                    "address": ", ".join(b["location"].get("display_address", [])),
+                    "image": b.get("image_url", ""),
+                    "categories": [c["title"] for c in b.get("categories", [])],
+                    "source": "Yelp"
+                }
+                for b in businesses[:limit]
+            ]
 
     except Exception as e:
-        print("Experience error:", e)
+        print("Yelp error:", e)
+
+    # ────────────────────────────────
+    # Step 2: OpenTripMap fallback
+    # ────────────────────────────────
+    try:
+        lat, lon = await geocode_city(location)
+
+        if not lat:
+            return []
+
+        async with httpx.AsyncClient(timeout=12) as client:
+            radius_resp = await client.get(
+                OTM_RADIUS_URL,
+                params={
+                    "radius": 3000,
+                    "lon": lon,
+                    "lat": lat,
+                    "limit": limit,
+                    "apikey": OTM_KEY
+                }
+            )
+            radius_resp.raise_for_status()
+            items = radius_resp.json().get("features", [])
+
+        results = []
+        for item in items:
+            props = item.get("properties", {})
+            results.append({
+                "title": props.get("name"),
+                "kind": props.get("kinds", ""),
+                "source": "OpenTripMap",
+            })
+
+        return results[:limit]
+
+    except Exception as e:
+        print("OpenTripMap error:", e)
         return []
-
-    # Product extraction
-    products = data.get("data", {}).get("products", [])
-    if not products:
-        return []
-
-    # Weather filtering
-    filtered = []
-    indoor_words  = ["museum", "spa", "cooking", "temple", "indoor", "art", "gallery"]
-    outdoor_words = ["cruise", "trek", "bike", "sunset", "safari", "outdoor"]
-
-    for item in products:
-        text = (
-            (item.get("title") or "") + " " +
-            (item.get("shortDescription") or "")
-        ).lower()
-
-        if indoor and any(w in text for w in indoor_words):
-            filtered.append(item)
-        elif not indoor and any(w in text for w in outdoor_words):
-            filtered.append(item)
-
-    # Fallback if filter becomes empty
-    return filtered[:per_page] if filtered else products[:per_page]

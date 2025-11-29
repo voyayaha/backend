@@ -1,4 +1,4 @@
-# main.py rewritten with Yelp + OpenTripMap and optional Viator fallback
+# main.py – Yelp + OpenTripMap only (Viator completely removed)
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,7 +7,6 @@ from dotenv import load_dotenv
 import os
 import re
 
-# Local modules
 from hotels import search_hotels
 from social import scrape_social, get_trending_spots
 from db import init_db, save_message
@@ -17,7 +16,6 @@ from travelrisk import get_custom_travel_risk
 from chat import register_chat_routes
 from yelp_backend import yelp_search
 from opentripmap import get_mindful_places
-from experiences import search_experiences   # optional, only used as fallback
 
 load_dotenv()
 
@@ -45,7 +43,7 @@ def root():
     return RedirectResponse("/docs")
 
 # ---------------------------------------------------------------------------
-# EXPERIENCES (Yelp + OpenTripMap, Viator optional fallback)
+# EXPERIENCES (Yelp + OpenTripMap)
 # ---------------------------------------------------------------------------
 @app.get("/experiences")
 async def experiences(
@@ -54,14 +52,14 @@ async def experiences(
     lat: float | None = Query(None),
     lon: float | None = Query(None),
 ):
-    # Weather preference
+    # Weather recommendation (Indoor / Outdoor)
     weather = await get_weather_and_risk(location)
     wants_indoor = weather.get("indoor_preferred", False)
 
-    # Yelp primary
+    # Primary: Yelp
     yelp_results = await yelp_search(location, query, wants_indoor)
 
-    # If coordinates given → enhance with OpenTripMap
+    # OpenTripMap enhancement
     otm_results = []
     if lat and lon:
         try:
@@ -69,37 +67,25 @@ async def experiences(
         except:
             otm_results = []
 
-    # Viator fallback ONLY if Yelp result empty
-    viator_results = []
-    if not yelp_results:
-        try:
-            viator_results = await search_experiences(location, query)
-        except:
-            viator_results = []
-
     return {
         "weather": weather,
         "yelp": yelp_results,
         "opentripmap": otm_results,
-        "viator_fallback": viator_results,
+        "viator_fallback": [],   # always empty since removed
     }
 
-# ---------------------------------------------------------------------------
-# HOTELS
 # ---------------------------------------------------------------------------
 @app.get("/hotels")
 async def hotels(city: str, check_in: str, check_out: str, limit: int = 6):
     return await search_hotels(city, check_in, check_out, limit)
 
 # ---------------------------------------------------------------------------
-# WEATHER
-# ---------------------------------------------------------------------------
 @app.get("/weather")
 async def weather(location: str):
     return await get_weather_and_risk(location)
 
 # ---------------------------------------------------------------------------
-# AI TRAVEL CHAT
+# AI TRAVEL CHAT (Uses Yelp + weather + global info)
 # ---------------------------------------------------------------------------
 @app.get("/chat/experiences")
 async def chat_with_context(

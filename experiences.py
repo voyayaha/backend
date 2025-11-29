@@ -1,146 +1,90 @@
-import os
-import requests
-from flask import Blueprint, request, jsonify
+# experiences.py
+import time
+from typing import List, Dict, Any, Optional
+from yelp_backend import yelp_search
+from opentripmap import geocode_city, get_mindful_places
+from weather import get_weather_and_risk  # your existing module
 
-experiences_bp = Blueprint("experiences", __name__)
+# simple in-memory TTL cache (process memory)
+_CACHE: Dict[str, Dict] = {}
+CACHE_TTL = 60 * 60  # seconds
 
-OPENTRIPMAP_API_KEY = os.getenv("OPENTRIPMAP_API_KEY")
-YELP_API_KEY = os.getenv("YELP_API_KEY")
-VIATOR_KEY = os.getenv("VIATOR_API_KEY")  # Optional
-
-
-# ----------------------------- HELPERS -----------------------------
-
-def safe_json(response):
-    """Avoid JSON decode errors."""
-    try:
-        return response.json()
-    except Exception:
+def cache_get(key: str) -> Optional[Any]:
+    rec = _CACHE.get(key)
+    if not rec:
         return None
+    if time.time() - rec["ts"] > CACHE_TTL:
+        _CACHE.pop(key, None)
+        return None
+    return rec["val"]
 
+def cache_set(key: str, val: Any):
+    _CACHE[key] = {"val": val, "ts": time.time()}
 
-# ----------------------------- OPENTRIPMAP -----------------------------
+def mark_indoor_outdoor(item: Dict[str, Any]) -> Dict[str, Any]:
+    text = (item.get("title", "") + " " + (item.get("kinds", "") or "") + " " + (item.get("categories", "") or "")).lower()
+    indoor_kw = ["museum", "gallery", "spa", "cafe", "aquarium", "temple", "theatre", "indoor", "class"]
+    outdoor_kw = ["park", "hike", "trek", "cruise", "beach", "sunset", "outdoor", "bike", "safari"]
+    if any(k in text for k in indoor_kw):
+        item["indoor"] = True
+    elif any(k in text for k in outdoor_kw):
+        item["indoor"] = False
+    else:
+        item["indoor"] = None
+    return item
 
-def fetch_opentripmap(city):
-    url = "https://api.opentripmap.com/0.1/en/places/geoname"
-    params = {
-        "apikey": OPENTRIPMAP_API_KEY,
-        "name": city
-    }
-    r = requests.get(url, params=params)
+async def search_experiences(location: str, query: str = "", date: Optional[str] = None, per_page: int = 6) -> List[Dict[str, Any]]:
+    """
+    Search experiences with Yelp first, fallback to OpenTripMap if needed.
+    Returns normalized list of items.
+    """
+    cache_key = f"experiences:{location.lower()}:{query}:{per_page}"
+    cached = cache_get(cache_key)
+    if cached:
+        return cached
 
-    data = safe_json(r)
-    if not data or "lat" not in data:
-        return []
-
-    lat, lon = data["lat"], data["lon"]
-
-    list_url = "https://api.opentripmap.com/0.1/en/places/radius"
-    params = {
-        "apikey": OPENTRIPMAP_API_KEY,
-        "radius": 5000,
-        "lon": lon,
-        "lat": lat,
-        "limit": 20
-    }
-    r = requests.get(list_url, params=params)
-    data = safe_json(r)
-
-    if not data:
-        return []
-
-    return [
-        {
-            "name": p.get("name", "Unknown"),
-            "category": p.get("kinds"),
-            "source": "OpenTripMap"
-        }
-        for p in data.get("features", [])
-    ]
-
-
-# ----------------------------- YELP -----------------------------
-
-def fetch_yelp(city):
-    headers = {"Authorization": f"Bearer {YELP_API_KEY}"}
-    url = "https://api.yelp.com/v3/businesses/search"
-
-    params = {"location": city, "limit": 20}
-
-    r = requests.get(url, headers=headers, params=params)
-    data = safe_json(r)
-
-    if not data or "businesses" not in data:
-        return []
-
-    return [
-        {
-            "name": b["name"],
-            "rating": b.get("rating"),
-            "location": ", ".join(b["location"]["display_address"]),
-            "image": b.get("image_url"),
-            "source": "Yelp"
-        }
-        for b in data["businesses"]
-    ]
-
-
-# ----------------------------- VIATOR (OPTIONAL) -----------------------------
-
-def fetch_viator(city):
-    if not VIATOR_KEY:
-        return []
-
-    url = "https://viatorapi.viator.com/v1/taxonomy/locations/search"
-    headers = {"api-key": VIATOR_KEY}
-
-    params = {"text": city}
-
-    r = requests.get(url, headers=headers, params=params)
-    data = safe_json(r)
-
-    if not data:
-        return []
-
-    return [
-        {
-            "name": item.get("title"),
-            "price": item.get("fromPrice"),
-            "rating": item.get("rating"),
-            "image": item.get("imageURL"),
-            "source": "Viator"
-        }
-        for item in data.get("data", [])
-    ]
-
-
-# ----------------------------- MAIN ROUTE -----------------------------
-
-@experiences_bp.route("/experiences", methods=["GET"])
-def get_experiences():
-    city = request.args.get("city")
-
-    if not city:
-        return jsonify({"error": "Missing 'city' parameter"}), 400
-
+    # Weather preference
     try:
-        results = []
+        weather = await get_weather_and_risk(location)
+        indoor_pref = weather.get("indoor_preferred", False)
+    except Exception:
+        indoor_pref = False
 
-        # Always try OpenTripMap
-        results += fetch_opentripmap(city)
+    # Yelp primary
+    try:
+        yelp_results = await yelp_search(location, query, per_page)
+    except Exception:
+        yelp_results = []
 
-        # Try Yelp if key exists
-        if YELP_API_KEY:
-            results += fetch_yelp(city)
+    # If Yelp empty or insufficient, use OpenTripMap
+    final: List[Dict[str, Any]] = []
+    if yelp_results:
+        final = yelp_results
+    else:
+        lat, lon = await geocode_city(location)
+        if lat and lon:
+            otm = await get_mindful_places(lat, lon, radius=3000, limit=per_page)
+            final = otm
+        else:
+            final = []
 
-        # Optional
-        if VIATOR_KEY:
-            results += fetch_viator(city)
+    # Normalize & mark indoor/outdoor
+    normalized = []
+    for it in final:
+        it = mark_indoor_outdoor(it)
+        normalized.append(it)
 
-        if not results:
-            return jsonify({"message": "No results found"}), 200
+    # Prefer matching weather
+    preferred = []
+    others = []
+    for it in normalized:
+        if indoor_pref and it.get("indoor") is True:
+            preferred.append(it)
+        elif (not indoor_pref) and it.get("indoor") is False:
+            preferred.append(it)
+        else:
+            others.append(it)
 
-        return jsonify({"experiences": results})
-
-    except Exception as e:
-        return jsonify({"response": f"Error generating experiences: {str(e)}"}), 500
+    result = (preferred + others)[:per_page]
+    cache_set(cache_key, result)
+    return result

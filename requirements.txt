@@ -12,3 +12,6 @@ openai
 typing
 
 datetime
+flask
+flask-cors
+

@@ -3,7 +3,7 @@ import httpx
 from weather import get_weather_and_risk
 
 YELP_KEY = os.getenv("YELP_API_KEY")
-OTM_KEY = os.getenv("OPENTRIPMAP_KEY")
+OTM_KEY = os.getenv("OPENTRIPMAP_API_KEY")
 
 YELP_URL = "https://api.yelp.com/v3/businesses/search"
 OTM_GEOCODE_URL = "https://api.opentripmap.com/0.1/en/places/geoname"
@@ -141,3 +141,4 @@ async def search_experiences(location: str, query: str = "", date: str | None = 
     except Exception as e:
         print("OpenTripMap error:", e)
         return []
+

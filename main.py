@@ -165,7 +165,8 @@ def debug_keys():
     import os
     return {
         "YELP_API_KEY_loaded": bool(os.getenv("YELP_API_KEY")),
-        "OPENTRIPMAP_KEY_loaded": bool(os.getenv("OPENTRIPMAP_KEY"))
+        "OPENTRIPMAP_API_KEY_loaded": bool(os.getenv("OPENTRIPMAP_API_KEY"))
     }
+
 
 

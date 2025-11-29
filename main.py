@@ -159,3 +159,13 @@ async def mindful(lat: float = Query(...), lon: float = Query(...), radius: int 
 @app.get("/trends")
 async def trends(location: str = Query("Pune")):
     return await get_trending_spots(location)
+
+@app.get("/debug/keys")
+def debug_keys():
+    import os
+    return {
+        "YELP_API_KEY_loaded": bool(os.getenv("YELP_API_KEY")),
+        "OPENTRIPMAP_KEY_loaded": bool(os.getenv("OPENTRIPMAP_KEY"))
+    }
+
+

@@ -1,144 +1,146 @@
 import os
-import httpx
-from weather import get_weather_and_risk
+import requests
+from flask import Blueprint, request, jsonify
 
-YELP_KEY = os.getenv("YELP_API_KEY")
-OTM_KEY = os.getenv("OPENTRIPMAP_API_KEY")
+experiences_bp = Blueprint("experiences", __name__)
 
-YELP_URL = "https://api.yelp.com/v3/businesses/search"
-OTM_GEOCODE_URL = "https://api.opentripmap.com/0.1/en/places/geoname"
-OTM_RADIUS_URL = "https://api.opentripmap.com/0.1/en/places/radius"
-
-
-# ──────────────────────────────────────────────
-# Helper: Convert city name → lat/lon via OTM
-# ──────────────────────────────────────────────
-async def geocode_city(city: str):
-    async with httpx.AsyncClient(timeout=10) as client:
-        r = await client.get(
-            OTM_GEOCODE_URL,
-            params={"name": city, "apikey": OTM_KEY}
-        )
-        data = r.json()
-        return data.get("lat"), data.get("lon")
+OPENTRIPMAP_API_KEY = os.getenv("OPENTRIPMAP_API_KEY")
+YELP_API_KEY = os.getenv("YELP_API_KEY")
+VIATOR_KEY = os.getenv("VIATOR_API_KEY")  # Optional
 
 
-# ──────────────────────────────────────────────
-# Experience Search (Yelp + OpenTripMap)
-# ──────────────────────────────────────────────
-async def search_experiences(location: str, query: str = "", date: str | None = None, limit: int = 6):
-    """
-    Replacement for Viator.
-    1. Yelp Fusion → places, activities, food, experiences
-    2. Falls back to OpenTripMap if Yelp returns nothing
-    """
+# ----------------------------- HELPERS -----------------------------
 
-    # Weather preference for filtering
-    weather = await get_weather_and_risk(location)
-    indoor_preferred = weather.get("indoor_preferred", False)
-
-    # ────────────────────────────────
-    # Step 1: Yelp Fusion search
-    # ────────────────────────────────
+def safe_json(response):
+    """Avoid JSON decode errors."""
     try:
-        headers = {"Authorization": f"Bearer {YELP_KEY}"}
+        return response.json()
+    except Exception:
+        return None
 
-        params = {
-            "location": location,
-            "term": query if query else "things to do",
-            "sort_by": "best_match",
-            "limit": limit
-        }
 
-        async with httpx.AsyncClient(timeout=12) as client:
-            yelp_response = await client.get(YELP_URL, headers=headers, params=params)
-            yelp_response.raise_for_status()
-            yelp_data = yelp_response.json()
+# ----------------------------- OPENTRIPMAP -----------------------------
 
-        businesses = yelp_data.get("businesses", [])
+def fetch_opentripmap(city):
+    url = "https://api.opentripmap.com/0.1/en/places/geoname"
+    params = {
+        "apikey": OPENTRIPMAP_API_KEY,
+        "name": city
+    }
+    r = requests.get(url, params=params)
 
-        # Weather-based filtering
-        indoor_keywords = ["museum", "spa", "cafe", "gallery", "indoor"]
-        outdoor_keywords = ["park", "hike", "trek", "outdoor", "beach"]
-
-        def matches_weather(biz):
-            name = biz.get("name", "").lower()
-            cats = " ".join([c["title"].lower() for c in biz.get("categories", [])])
-
-            text = f"{name} {cats}"
-
-            if indoor_preferred:
-                return any(w in text for w in indoor_keywords)
-            else:
-                return any(w in text for w in outdoor_keywords)
-
-        filtered = [b for b in businesses if matches_weather(b)]
-
-        if filtered:
-            return [
-                {
-                    "title": b["name"],
-                    "rating": b.get("rating", None),
-                    "address": ", ".join(b["location"].get("display_address", [])),
-                    "image": b.get("image_url", ""),
-                    "categories": [c["title"] for c in b.get("categories", [])],
-                    "source": "Yelp"
-                }
-                for b in filtered[:limit]
-            ]
-
-        # Fallback: return top results (no weather match)
-        if businesses:
-            return [
-                {
-                    "title": b["name"],
-                    "rating": b.get("rating", None),
-                    "address": ", ".join(b["location"].get("display_address", [])),
-                    "image": b.get("image_url", ""),
-                    "categories": [c["title"] for c in b.get("categories", [])],
-                    "source": "Yelp"
-                }
-                for b in businesses[:limit]
-            ]
-
-    except Exception as e:
-        print("Yelp error:", e)
-
-    # ────────────────────────────────
-    # Step 2: OpenTripMap fallback
-    # ────────────────────────────────
-    try:
-        lat, lon = await geocode_city(location)
-
-        if not lat:
-            return []
-
-        async with httpx.AsyncClient(timeout=12) as client:
-            radius_resp = await client.get(
-                OTM_RADIUS_URL,
-                params={
-                    "radius": 3000,
-                    "lon": lon,
-                    "lat": lat,
-                    "limit": limit,
-                    "apikey": OTM_KEY
-                }
-            )
-            radius_resp.raise_for_status()
-            items = radius_resp.json().get("features", [])
-
-        results = []
-        for item in items:
-            props = item.get("properties", {})
-            results.append({
-                "title": props.get("name"),
-                "kind": props.get("kinds", ""),
-                "source": "OpenTripMap",
-            })
-
-        return results[:limit]
-
-    except Exception as e:
-        print("OpenTripMap error:", e)
+    data = safe_json(r)
+    if not data or "lat" not in data:
         return []
 
+    lat, lon = data["lat"], data["lon"]
+
+    list_url = "https://api.opentripmap.com/0.1/en/places/radius"
+    params = {
+        "apikey": OPENTRIPMAP_API_KEY,
+        "radius": 5000,
+        "lon": lon,
+        "lat": lat,
+        "limit": 20
+    }
+    r = requests.get(list_url, params=params)
+    data = safe_json(r)
+
+    if not data:
+        return []
+
+    return [
+        {
+            "name": p.get("name", "Unknown"),
+            "category": p.get("kinds"),
+            "source": "OpenTripMap"
+        }
+        for p in data.get("features", [])
+    ]
+
+
+# ----------------------------- YELP -----------------------------
+
+def fetch_yelp(city):
+    headers = {"Authorization": f"Bearer {YELP_API_KEY}"}
+    url = "https://api.yelp.com/v3/businesses/search"
+
+    params = {"location": city, "limit": 20}
+
+    r = requests.get(url, headers=headers, params=params)
+    data = safe_json(r)
+
+    if not data or "businesses" not in data:
+        return []
+
+    return [
+        {
+            "name": b["name"],
+            "rating": b.get("rating"),
+            "location": ", ".join(b["location"]["display_address"]),
+            "image": b.get("image_url"),
+            "source": "Yelp"
+        }
+        for b in data["businesses"]
+    ]
+
+
+# ----------------------------- VIATOR (OPTIONAL) -----------------------------
+
+def fetch_viator(city):
+    if not VIATOR_KEY:
+        return []
+
+    url = "https://viatorapi.viator.com/v1/taxonomy/locations/search"
+    headers = {"api-key": VIATOR_KEY}
+
+    params = {"text": city}
+
+    r = requests.get(url, headers=headers, params=params)
+    data = safe_json(r)
+
+    if not data:
+        return []
+
+    return [
+        {
+            "name": item.get("title"),
+            "price": item.get("fromPrice"),
+            "rating": item.get("rating"),
+            "image": item.get("imageURL"),
+            "source": "Viator"
+        }
+        for item in data.get("data", [])
+    ]
+
+
+# ----------------------------- MAIN ROUTE -----------------------------
+
+@experiences_bp.route("/experiences", methods=["GET"])
+def get_experiences():
+    city = request.args.get("city")
+
+    if not city:
+        return jsonify({"error": "Missing 'city' parameter"}), 400
+
+    try:
+        results = []
+
+        # Always try OpenTripMap
+        results += fetch_opentripmap(city)
+
+        # Try Yelp if key exists
+        if YELP_API_KEY:
+            results += fetch_yelp(city)
+
+        # Optional
+        if VIATOR_KEY:
+            results += fetch_viator(city)
+
+        if not results:
+            return jsonify({"message": "No results found"}), 200
+
+        return jsonify({"experiences": results})
+
+    except Exception as e:
+        return jsonify({"response": f"Error generating experiences: {str(e)}"}), 500

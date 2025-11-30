@@ -2,12 +2,11 @@
 import time
 from typing import List, Dict, Any, Optional
 from yelp_backend import yelp_search
-from opentripmap import geocode_city, get_mindful_places
-from weather import get_weather_and_risk  # your existing module
+from foursquare_backend import foursquare_search
+from weather import get_weather_and_risk  # existing weather module
 
-# simple in-memory TTL cache (process memory)
 _CACHE: Dict[str, Dict] = {}
-CACHE_TTL = 60 * 60  # seconds
+CACHE_TTL = 60 * 60  # 1 hour
 
 def cache_get(key: str) -> Optional[Any]:
     rec = _CACHE.get(key)
@@ -22,7 +21,7 @@ def cache_set(key: str, val: Any):
     _CACHE[key] = {"val": val, "ts": time.time()}
 
 def mark_indoor_outdoor(item: Dict[str, Any]) -> Dict[str, Any]:
-    text = (item.get("title", "") + " " + (item.get("kinds", "") or "") + " " + (item.get("categories", "") or "")).lower()
+    text = (item.get("title", "") + " " + " ".join(item.get("categories", []))).lower()
     indoor_kw = ["museum", "gallery", "spa", "cafe", "aquarium", "temple", "theatre", "indoor", "class"]
     outdoor_kw = ["park", "hike", "trek", "cruise", "beach", "sunset", "outdoor", "bike", "safari"]
     if any(k in text for k in indoor_kw):
@@ -33,11 +32,7 @@ def mark_indoor_outdoor(item: Dict[str, Any]) -> Dict[str, Any]:
         item["indoor"] = None
     return item
 
-async def search_experiences(location: str, query: str = "", date: Optional[str] = None, per_page: int = 6) -> List[Dict[str, Any]]:
-    """
-    Search experiences with Yelp first, fallback to OpenTripMap if needed.
-    Returns normalized list of items.
-    """
+async def search_experiences(location: str, query: str = "", per_page: int = 6) -> List[Dict[str, Any]]:
     cache_key = f"experiences:{location.lower()}:{query}:{per_page}"
     cached = cache_get(cache_key)
     if cached:
@@ -52,27 +47,16 @@ async def search_experiences(location: str, query: str = "", date: Optional[str]
 
     # Yelp primary
     try:
-        yelp_results = await yelp_search(location, query, per_page)
+        results = await yelp_search(location, query, per_page)
     except Exception:
-        yelp_results = []
+        results = []
 
-    # If Yelp empty or insufficient, use OpenTripMap
-    final: List[Dict[str, Any]] = []
-    if yelp_results:
-        final = yelp_results
-    else:
-        lat, lon = await geocode_city(location)
-        if lat and lon:
-            otm = await get_mindful_places(lat, lon, radius=3000, limit=per_page)
-            final = otm
-        else:
-            final = []
+    # Foursquare fallback
+    if not results:
+        results = await foursquare_search(location, query, per_page)
 
     # Normalize & mark indoor/outdoor
-    normalized = []
-    for it in final:
-        it = mark_indoor_outdoor(it)
-        normalized.append(it)
+    normalized = [mark_indoor_outdoor(r) for r in results]
 
     # Prefer matching weather
     preferred = []
@@ -85,6 +69,6 @@ async def search_experiences(location: str, query: str = "", date: Optional[str]
         else:
             others.append(it)
 
-    result = (preferred + others)[:per_page]
-    cache_set(cache_key, result)
-    return result
+    final_result = (preferred + others)[:per_page]
+    cache_set(cache_key, final_result)
+    return final_result

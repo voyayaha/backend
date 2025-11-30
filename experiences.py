@@ -1,7 +1,7 @@
 import aiohttp
 import os
 from yelp_backend import search_yelp
-from experiences_weather import get_weather
+from weather import get_weather_and_risk
 
 
 GEOAPIFY_API_KEY = os.getenv("GEOAPIFY_API_KEY")
@@ -57,3 +57,4 @@ async def get_combined_experiences(location: str, query: str):
         "yelp": yelp_results,
         "geoapify": geo_results
     }
+

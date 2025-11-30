@@ -1,38 +1,32 @@
-# llm.py
 import os
 import requests
-from dotenv import load_dotenv
 
-load_dotenv()
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-VY_GROQ_API_KEY = os.getenv("VY_GROQ_API_KEY")
+def generate_itinerary(prompt: str):
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {"Authorization": f"Bearer {GROQ_API_KEY}"}
 
-client = Groq(api_key=GROQ_API_KEY)
+    body = {
+        "model": "llama-3.1-70b-versatile",
+        "messages": [
+            {"role": "system", "content": "You generate structured JSON trip suggestions."},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.4,
+        "max_tokens": 600
+    }
 
-def generate_llm_fallback(location, budget, activity, duration, motivation):
-    prompt = f"""
-    Generate 6 travel experience recommendations for {location}.
-    Format as JSON list. 
-    Each item must contain: title, description.
+    r = requests.post(url, json=body, headers=headers)
+    
+    if r.status_code != 200:
+        raise ValueError(f"Error generating text: {r.text}")
 
-    User Filters:
-    - Budget: {budget}
-    - Activity: {activity}
-    - Duration: {duration}
-    - Motivation: {motivation}
-    """
+    content = r.json()["choices"][0]["message"]["content"]
 
+    # Expecting JSON output
+    import json
     try:
-        res = client.chat.completions.create(
-            model="llama3-70b-8192",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=600
-        )
-
-        text = res.choices[0].message.content
-
-        import json
-        return json.loads(text)
-
+        return json.loads(content)
     except:
-        return [{"title": "No results", "description": "LLM fallback failed"}]
+        return [{"title": "AI Output", "description": content}]

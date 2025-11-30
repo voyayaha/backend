@@ -7,7 +7,7 @@ import re
 
 from hotels import search_hotels
 from social import scrape_social, get_trending_spots
-from experiences import get_travel_recommendations
+from experiences import get_combined_experiences
 from llm import generate_llm_fallback
 from weather import get_weather_and_risk
 from yelp_backend import yelp_search
@@ -30,18 +30,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/", include_in_schema=False)
+@app.get("/")
 def root():
-    return {"message": "Voyayaha API is running"}
+    return {"status": "Voyayaha backend running"}
 
 # ──────────────────────────────
 # EXPERIENCES 
 # ──────────────────────────────
 @app.get("/experiences")
-async def experiences(location: str = Query(...), query: str = Query(""), per_page: int = 6):
-    weather = await get_weather_and_risk(location)
-    experiences_list = await search_experiences(location, query, per_page=per_page)
-    return {"weather": weather, "experiences": experiences_list}
+async def experiences(location: str, query: str = "tourist"):
+    """
+    Returns weather, Yelp results, Geoapify fallback results.
+    """
+    return await get_combined_experiences(location, query)
 
 # ──────────────────────────────
 # HOTELS
@@ -61,22 +62,42 @@ async def weather(location: str):
 # CHAT WITH CONTEXT
 # ──────────────────────────────
 @app.get("/chat/experiences")
-def chat_experiences(
+async def chat_experiences(
     location: str = Query(...),
     budget: str = "",
     activity: str = "",
     duration: str = "",
     motivation: str = "",
 ):
-    # Fetch structured recommendations
-    stops = get_travel_recommendations(location)
+    stops = await get_combined_experiences(location, activity or "tourist")
 
-    if not stops:
-        # If both Yelp + FS fail → LLM fallback
-        llm_stops = generate_llm_fallback(location, budget, activity, duration, motivation)
-        return {"stops": llm_stops}
+    final_stops = stops.get("yelp", []) + stops.get("geoapify", [])
+    if not final_stops:
+        return {"stops": [], "message": "No results found. Try changing your filters."}
 
-    return {"stops": stops}
+    prompt = f"""
+    You are Voyayaha AI Trip Planner.
+    User wants recommendations for:
+    Location: {location}
+    Budget: {budget}
+    Activity: {activity}
+    Duration: {duration}
+    Motivation: {motivation}
+
+    Here are nearby places:
+    {final_stops}
+
+    Generate 4–6 travel stops with:
+      - Title
+      - Description
+      - Why it fits the user's preferences
+    """
+
+    try:
+        ai_output = generate_itinerary(prompt)
+        return {"stops": ai_output}
+    except Exception as e:
+        return {"error": f"LLM error: {str(e)}"}
 
 
 
@@ -93,5 +114,6 @@ async def social(location: str, limit: int = 5):
 @app.get("/trends")
 async def trends(location: str = "Pune"):
     return await get_trending_spots(location)
+
 
 

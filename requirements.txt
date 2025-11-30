@@ -10,8 +10,9 @@ requests
 praw
 openai
 typing
-
+aiohttp
 datetime
 flask
 flask-cors
+
 

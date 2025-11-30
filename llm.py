@@ -6,28 +6,33 @@ from dotenv import load_dotenv
 load_dotenv()
 
 VY_GROQ_API_KEY = os.getenv("VY_GROQ_API_KEY")
-MODEL_ID = "llama3-70b-8192"
-GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_HEADERS = {
-    "Authorization": f"Bearer {VY_GROQ_API_KEY}",
-    "Content-Type": "application/json"
-}
 
-def generate_zephyr_response(prompt: str, max_tokens: int = 350) -> str:
-    payload = {
-        "model": MODEL_ID,
-        "messages": [
-            {"role": "system", "content": "You are a global travel assistant. Respond clearly and concisely."},
-            {"role": "user", "content": prompt}
-        ],
-        "temperature": 0.7,
-        "top_p": 0.95,
-        "max_tokens": max_tokens
-    }
+client = Groq(api_key=GROQ_API_KEY)
+
+def generate_llm_fallback(location, budget, activity, duration, motivation):
+    prompt = f"""
+    Generate 6 travel experience recommendations for {location}.
+    Format as JSON list. 
+    Each item must contain: title, description.
+
+    User Filters:
+    - Budget: {budget}
+    - Activity: {activity}
+    - Duration: {duration}
+    - Motivation: {motivation}
+    """
+
     try:
-        res = requests.post(GROQ_API_URL, headers=GROQ_HEADERS, json=payload, timeout=60)
-        res.raise_for_status()
-        data = res.json()
-        return data["choices"][0]["message"]["content"].strip()
-    except Exception as e:
-        return f"Error generating text: {e}"
+        res = client.chat.completions.create(
+            model="llama3-70b-8192",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=600
+        )
+
+        text = res.choices[0].message.content
+
+        import json
+        return json.loads(text)
+
+    except:
+        return [{"title": "No results", "description": "LLM fallback failed"}]

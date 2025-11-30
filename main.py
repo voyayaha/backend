@@ -7,7 +7,8 @@ import re
 
 from hotels import search_hotels
 from social import scrape_social, get_trending_spots
-from llm import generate_zephyr_response
+from experiences import get_travel_recommendations
+from llm import generate_llm_fallback
 from weather import get_weather_and_risk
 from yelp_backend import yelp_search
 
@@ -31,7 +32,7 @@ app.add_middleware(
 
 @app.get("/", include_in_schema=False)
 def root():
-    return RedirectResponse("/docs")
+    return {"message": "Voyayaha API is running"}
 
 # ──────────────────────────────
 # EXPERIENCES 
@@ -60,37 +61,23 @@ async def weather(location: str):
 # CHAT WITH CONTEXT
 # ──────────────────────────────
 @app.get("/chat/experiences")
-async def chat_with_context(
-    location: str,
-    budget: str | None = None,
-    activity: str | None = None,
-    duration: str | None = None,
-    motivation: str | None = None,
+def chat_experiences(
+    location: str = Query(...),
+    budget: str = "",
+    activity: str = "",
+    duration: str = "",
+    motivation: str = "",
 ):
-    try:
-        experiences_list = await search_experiences(location, "", per_page=6)
-        titles = [x.get("title") for x in experiences_list]
+    # Fetch structured recommendations
+    stops = get_travel_recommendations(location)
 
-        prompt = f"""
-You are a travel assistant for {location}.
-User preferences: budget={budget}, activity={activity}, duration={duration}, motivation={motivation}
-Popular spots: {', '.join(titles)}
+    if not stops:
+        # If both Yelp + FS fail → LLM fallback
+        llm_stops = generate_llm_fallback(location, budget, activity, duration, motivation)
+        return {"stops": llm_stops}
 
-Create a 3-stop itinerary in format:
+    return {"stops": stops}
 
-**Stop 1: [Activity]**
-[Description]
-**Stop 2: [Activity]**
-[Description]
-**Stop 3: [Activity]**
-[Description]
-"""
-        raw = generate_zephyr_response(prompt)
-        matches = re.findall(r"\*\*Stop \d: (.*?)\*\*\n(.*?)(?=\*\*Stop \d|$)", raw, re.DOTALL)
-        stops = [{"title": m[0].strip(), "description": m[1].strip()} for m in matches] if matches else []
-        return {"stops": stops or [{"title": "No data", "description": "Could not generate itinerary"}]}
-    except Exception as e:
-        return {"stops": [], "error": str(e)}
 
 
 # ──────────────────────────────
@@ -106,4 +93,5 @@ async def social(location: str, limit: int = 5):
 @app.get("/trends")
 async def trends(location: str = "Pune"):
     return await get_trending_spots(location)
+
 

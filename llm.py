@@ -8,7 +8,7 @@ load_dotenv()
 # API KEYS
 # ─────────────────────────────────────────────────────────────────────────────
 
-GROQ_RECOMMENDATION_KEY = os.getenv("GROQ_RECOMMENDATION_KEY")
+VY_GROQ_API_KEY = os.getenv("VY_GROQ_API_KEY")
 OPENTRIPMAP_API_KEY = os.getenv("OPENTRIPMAP_API_KEY")
 
 MODEL_ID = "llama3-70b-8192"
@@ -16,7 +16,7 @@ MODEL_ID = "llama3-70b-8192"
 # Groq API constants
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_HEADERS = {
-    "Authorization": f"Bearer {GROQ_RECOMMENDATION_KEY}",
+    "Authorization": f"Bearer {VY_GROQ_API_KEY}",
     "Content-Type": "application/json"
 }
 

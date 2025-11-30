@@ -1,32 +1,75 @@
-# main.py
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from dotenv import load_dotenv
-from experiences import search_experiences
-from weather import get_weather_and_risk
-from llm import generate_zephyr_response
+import os
 import re
+
+from hotels import search_hotels
+from social import scrape_social, get_trending_spots
+from llm import get_global_city_context, generate_zephyr_response
+from weather import get_weather_and_risk
+from yelp_backend import yelp_search
 
 load_dotenv()
 
 app = FastAPI(title="Voyayaha – AI Travel Concierge")
 
-origins = ["*"]  # Adjust for your domains
+origins = [
+    "https://voyayaha.lovestoblog.com",
+    "http://localhost:5173",
+    "https://voyayaha.com",
+]
+
 app.add_middleware(
-    CORSMiddleware, allow_origins=origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"]
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.get("/", include_in_schema=False)
 def root():
     return RedirectResponse("/docs")
 
+# ──────────────────────────────
+# EXPERIENCES (Yelp + OpenTripMap)
+# ──────────────────────────────
 @app.get("/experiences")
-async def experiences(location: str = Query(...), query: str = Query(""), per_page: int = 6):
+async def experiences(location: str = Query(...), query: str = Query("")):
     weather = await get_weather_and_risk(location)
-    experiences_list = await search_experiences(location, query, per_page=per_page)
-    return {"weather": weather, "experiences": experiences_list}
+    wants_indoor = weather.get("indoor_preferred", False)
 
+    yelp_results = await yelp_search(location, query)
+
+    # OpenTripMap fallback
+    context = get_global_city_context(location)
+    otm_results = context.get("attractions", [])
+
+    return {
+        "weather": weather,
+        "yelp": yelp_results,
+        "opentripmap": otm_results
+    }
+
+# ──────────────────────────────
+# HOTELS
+# ──────────────────────────────
+@app.get("/hotels")
+async def hotels(city: str, check_in: str, check_out: str, limit: int = 6):
+    return await search_hotels(city, check_in, check_out, limit)
+
+# ──────────────────────────────
+# WEATHER
+# ──────────────────────────────
+@app.get("/weather")
+async def weather(location: str):
+    return await get_weather_and_risk(location)
+
+# ──────────────────────────────
+# CHAT WITH CONTEXT
+# ──────────────────────────────
 @app.get("/chat/experiences")
 async def chat_with_context(
     location: str,
@@ -36,26 +79,76 @@ async def chat_with_context(
     motivation: str | None = None,
 ):
     try:
-        experiences_list = await search_experiences(location, "", per_page=6)
-        titles = [x.get("title") for x in experiences_list]
+        weather_data = await get_weather_and_risk(location)
+        yelp_data = await yelp_search(location, "")
+        context = get_global_city_context(location)
+        yelp_titles = [x.get("name", "") for x in yelp_data]
+
+        weather_info = (
+            f"Weather: {weather_data.get('summary', 'N/A')}, "
+            f"Temp: {weather_data.get('temperature_c', 'N/A')}°C, "
+            f"Prefer: {'Indoor' if weather_data.get('indoor_preferred') else 'Outdoor'}"
+        )
+
+        pref = []
+        if budget: pref.append(f"Budget: {budget}")
+        if activity: pref.append(f"Activity: {activity}")
+        if duration: pref.append(f"Duration: {duration}")
+        if motivation: pref.append(f"Motivation: {motivation}")
+        pref_str = " | ".join(pref) if pref else "No preferences"
 
         prompt = f"""
-You are a travel assistant for {location}.
-User preferences: budget={budget}, activity={activity}, duration={duration}, motivation={motivation}
-Popular spots: {', '.join(titles)}
+You are a travel assistant helping a user visiting {location}.
+Context:
+- {weather_info}
+- Popular activities (Yelp): {', '.join(yelp_titles)}
+- City facts: {context}
+- User preferences: {pref_str}
 
-Create a 3-stop itinerary in format:
+Task:
+Create a personalized itinerary with exactly 3 stops.
+Use the format:
 
 **Stop 1: [Activity]**
-[Description]
+[One sentence]
+
 **Stop 2: [Activity]**
-[Description]
+[One sentence]
+
 **Stop 3: [Activity]**
-[Description]
+[One sentence]
 """
+
         raw = generate_zephyr_response(prompt)
-        matches = re.findall(r"\*\*Stop \d: (.*?)\*\*\n(.*?)(?=\*\*Stop \d|$)", raw, re.DOTALL)
-        stops = [{"title": m[0].strip(), "description": m[1].strip()} for m in matches] if matches else []
-        return {"stops": stops or [{"title": "No data", "description": "Could not generate itinerary"}]}
+
+        if not raw or raw.startswith("Error generating text"):
+            return {"stops": [], "error": raw}
+
+        matches = re.findall(r"\*\*Stop \d: (.*?)\*\*\n(.+?)(?=(\*\*Stop \d|$))", raw, re.DOTALL)
+
+        stops = []
+        for match in matches:
+            if len(match) >= 2:
+                stops.append({"title": match[0].strip(), "description": match[1].strip()})
+
+        if not stops:
+            stops = [{"title": "No data", "description": "Could not generate itinerary at this time."}]
+
+        return {"stops": stops}
+
     except Exception as e:
         return {"stops": [], "error": str(e)}
+
+# ──────────────────────────────
+# SOCIAL
+# ──────────────────────────────
+@app.get("/social")
+async def social(location: str, limit: int = 5):
+    return await scrape_social(location, limit)
+
+# ──────────────────────────────
+# TRENDS
+# ──────────────────────────────
+@app.get("/trends")
+async def trends(location: str = "Pune"):
+    return await get_trending_spots(location)

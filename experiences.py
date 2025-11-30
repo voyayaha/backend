@@ -1,82 +1,59 @@
-# experiences.py
-import requests
-from yelp_backend import yelp_search, YELP_API_KEY
+import aiohttp
 import os
+from yelp_backend import search_yelp
+from experiences_weather import get_weather
 
-FOURSQUARE_API_KEY = os.getenv("FOURSQUARE_API_KEY")
 
-def foursquare_search(location):
+GEOAPIFY_API_KEY = os.getenv("GEOAPIFY_API_KEY")
+
+
+async def search_geoapify(location: str, query: str):
     """
-    Simple Foursquare search using Places API (Sandbox OK)
+    Geoapify fallback search for POIs
     """
-    if not FOURSQUARE_API_KEY:
-        print("⚠ No Foursquare API key found")
+    if not GEOAPIFY_API_KEY:
         return []
 
-    # Geocode using Nominatim
-    try:
-        geo = requests.get(
-            "https://nominatim.openstreetmap.org/search",
-            params={"q": location, "format": "json"}
-        ).json()
-
-        if not geo:
-            return []
-
-        lat = geo[0]["lat"]
-        lon = geo[0]["lon"]
-
-    except:
-        return []
-
-    url = "https://api.foursquare.com/v3/places/search"
-
-    headers = {
-        "Authorization": FOURSQUARE_API_KEY,
-        "accept": "application/json"
-    }
-
+    url = "https://api.geoapify.com/v2/places"
     params = {
-        "ll": f"{lat},{lon}",
-        "radius": 8000,
-        "limit": 20
+        "text": query,
+        "filter": f"place:{location}",
+        "bias": f"proximity:0,0",
+        "limit": 10,
+        "apiKey": GEOAPIFY_API_KEY
     }
 
-    try:
-        r = requests.get(url, headers=headers, params=params)
-        data = r.json()
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, params=params) as res:
+            try:
+                data = await res.json()
+                features = data.get("features", [])
+                results = [
+                    {
+                        "name": f["properties"].get("name", "Unknown"),
+                        "category": f["properties"].get("categories", []),
+                        "address": f["properties"].get("formatted"),
+                        "lat": f["geometry"]["coordinates"][1],
+                        "lon": f["geometry"]["coordinates"][0],
+                    }
+                    for f in features
+                ]
+                return results
+            except:
+                return []
 
-        results = []
-        if "results" in data:
-            for place in data["results"]:
-                results.append({
-                    "title": place.get("name", "Unknown Place"),
-                    "description": place.get("location", {}).get("formatted_address", "")
-                })
-        return results
 
-    except Exception as e:
-        print("Foursquare error:", e)
-        return []
+async def get_combined_experiences(location: str, query: str):
+    weather = await get_weather(location)
+    yelp_results = await search_yelp(location, query)
 
+    # Geoapify fallback
+    geo_results = []
+    if len(yelp_results) == 0:
+        geo_results = await search_geoapify(location, query)
 
-def get_travel_recommendations(location):
-    """
-    First try: Yelp
-    Second try: Foursquare
-    """
-    results = []
-
-    # 1. Try Yelp
-    if YELP_API_KEY:
-        yelp_results = yelp_search(location)
-        if yelp_results:
-            results.extend(yelp_results)
-
-    # 2. Fallback → Foursquare
-    if not results:
-        fs_results = foursquare_search(location)
-        if fs_results:
-            results.extend(fs_results)
-
-    return results
+    return {
+        "weather": weather,
+        "yelp": yelp_results,
+        "geoapify": geo_results
+    }

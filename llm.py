@@ -1,11 +1,17 @@
+# llm.py
 import os
 import requests
+from dotenv import load_dotenv
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+load_dotenv()
+
+VY_GROQ_API_KEY = os.getenv("VY_GROQ_API_KEY")
+
+client = Groq(api_key=VY_GROQ_API_KEY)
 
 def generate_itinerary(prompt: str):
     url = "https://api.groq.com/openai/v1/chat/completions"
-    headers = {"Authorization": f"Bearer {GROQ_API_KEY}"}
+    headers = {"Authorization": f"Bearer {VY_GROQ_API_KEY}"}
 
     body = {
         "model": "llama-3.1-70b-versatile",

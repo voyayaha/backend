@@ -7,7 +7,6 @@ load_dotenv()
 
 VY_GROQ_API_KEY = os.getenv("VY_GROQ_API_KEY")
 
-client = Groq(api_key=VY_GROQ_API_KEY)
 
 def generate_itinerary(prompt: str):
     url = "https://api.groq.com/openai/v1/chat/completions"

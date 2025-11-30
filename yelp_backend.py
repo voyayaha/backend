@@ -1,33 +1,33 @@
-# yelp_backend.py
-import requests
 import os
+import aiohttp
 
 YELP_API_KEY = os.getenv("YELP_API_KEY")
 
-def yelp_search(location):
+
+async def search_yelp(location: str, query: str):
     if not YELP_API_KEY:
-        print("⚠ No Yelp API key found")
         return []
 
     url = "https://api.yelp.com/v3/businesses/search"
+    headers = {"Authorization": f"Bearer {YELP_API_KEY}"}
+    params = {"location": location, "term": query, "limit": 10, "sort_by": "rating"}
 
-    try:
-        r = requests.get(
-            url,
-            headers={"Authorization": f"Bearer {YELP_API_KEY}"},
-            params={"location": location, "limit": 10}
-        ).json()
-
-        if "businesses" not in r:
-            return []
-
-        results = []
-        for biz in r["businesses"]:
-            results.append({
-                "title": biz["name"],
-                "description": biz.get("location", {}).get("address1", "")
-            })
-        return results
-
-    except:
-        return []
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, headers=headers, params=params) as res:
+            try:
+                data = await res.json()
+                businesses = data.get("businesses", [])
+                return [
+                    {
+                        "name": b["name"],
+                        "rating": b.get("rating", "n/a"),
+                        "address": ", ".join(b["location"].get("display_address", [])),
+                        "image": b.get("image_url"),
+                        "url": b.get("url"),
+                        "lat": b["coordinates"].get("latitude"),
+                        "lon": b["coordinates"].get("longitude"),
+                    }
+                    for b in businesses
+                ]
+            except:
+                return []

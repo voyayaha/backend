@@ -13,7 +13,7 @@ def generate_itinerary(prompt: str):
     headers = {"Authorization": f"Bearer {VY_GROQ_API_KEY}"}
 
     body = {
-        "model": "llama-3.1-70b-versatile",
+        "model": "llama-3.1-8b-instant",
         "messages": [
             {"role": "system", "content": "You generate structured JSON trip suggestions."},
             {"role": "user", "content": prompt}

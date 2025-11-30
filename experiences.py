@@ -1,74 +1,82 @@
 # experiences.py
-import time
-from typing import List, Dict, Any, Optional
-from yelp_backend import yelp_search
-from foursquare_backend import foursquare_search
-from weather import get_weather_and_risk  # existing weather module
+import requests
+from yelp_backend import yelp_search, YELP_API_KEY
+import os
 
-_CACHE: Dict[str, Dict] = {}
-CACHE_TTL = 60 * 60  # 1 hour
+FOURSQUARE_API_KEY = os.getenv("FOURSQUARE_API_KEY")
 
-def cache_get(key: str) -> Optional[Any]:
-    rec = _CACHE.get(key)
-    if not rec:
-        return None
-    if time.time() - rec["ts"] > CACHE_TTL:
-        _CACHE.pop(key, None)
-        return None
-    return rec["val"]
+def foursquare_search(location):
+    """
+    Simple Foursquare search using Places API (Sandbox OK)
+    """
+    if not FOURSQUARE_API_KEY:
+        print("⚠ No Foursquare API key found")
+        return []
 
-def cache_set(key: str, val: Any):
-    _CACHE[key] = {"val": val, "ts": time.time()}
-
-def mark_indoor_outdoor(item: Dict[str, Any]) -> Dict[str, Any]:
-    text = (item.get("title", "") + " " + " ".join(item.get("categories", []))).lower()
-    indoor_kw = ["museum", "gallery", "spa", "cafe", "aquarium", "temple", "theatre", "indoor", "class"]
-    outdoor_kw = ["park", "hike", "trek", "cruise", "beach", "sunset", "outdoor", "bike", "safari"]
-    if any(k in text for k in indoor_kw):
-        item["indoor"] = True
-    elif any(k in text for k in outdoor_kw):
-        item["indoor"] = False
-    else:
-        item["indoor"] = None
-    return item
-
-async def search_experiences(location: str, query: str = "", per_page: int = 6) -> List[Dict[str, Any]]:
-    cache_key = f"experiences:{location.lower()}:{query}:{per_page}"
-    cached = cache_get(cache_key)
-    if cached:
-        return cached
-
-    # Weather preference
+    # Geocode using Nominatim
     try:
-        weather = await get_weather_and_risk(location)
-        indoor_pref = weather.get("indoor_preferred", False)
-    except Exception:
-        indoor_pref = False
+        geo = requests.get(
+            "https://nominatim.openstreetmap.org/search",
+            params={"q": location, "format": "json"}
+        ).json()
 
-    # Yelp primary
+        if not geo:
+            return []
+
+        lat = geo[0]["lat"]
+        lon = geo[0]["lon"]
+
+    except:
+        return []
+
+    url = "https://api.foursquare.com/v3/places/search"
+
+    headers = {
+        "Authorization": FOURSQUARE_API_KEY,
+        "accept": "application/json"
+    }
+
+    params = {
+        "ll": f"{lat},{lon}",
+        "radius": 8000,
+        "limit": 20
+    }
+
     try:
-        results = await yelp_search(location, query, per_page)
-    except Exception:
+        r = requests.get(url, headers=headers, params=params)
+        data = r.json()
+
         results = []
+        if "results" in data:
+            for place in data["results"]:
+                results.append({
+                    "title": place.get("name", "Unknown Place"),
+                    "description": place.get("location", {}).get("formatted_address", "")
+                })
+        return results
 
-    # Foursquare fallback
+    except Exception as e:
+        print("Foursquare error:", e)
+        return []
+
+
+def get_travel_recommendations(location):
+    """
+    First try: Yelp
+    Second try: Foursquare
+    """
+    results = []
+
+    # 1. Try Yelp
+    if YELP_API_KEY:
+        yelp_results = yelp_search(location)
+        if yelp_results:
+            results.extend(yelp_results)
+
+    # 2. Fallback → Foursquare
     if not results:
-        results = await foursquare_search(location, query, per_page)
+        fs_results = foursquare_search(location)
+        if fs_results:
+            results.extend(fs_results)
 
-    # Normalize & mark indoor/outdoor
-    normalized = [mark_indoor_outdoor(r) for r in results]
-
-    # Prefer matching weather
-    preferred = []
-    others = []
-    for it in normalized:
-        if indoor_pref and it.get("indoor") is True:
-            preferred.append(it)
-        elif (not indoor_pref) and it.get("indoor") is False:
-            preferred.append(it)
-        else:
-            others.append(it)
-
-    final_result = (preferred + others)[:per_page]
-    cache_set(cache_key, final_result)
-    return final_result
+    return results

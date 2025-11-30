@@ -10,7 +10,7 @@ from social import scrape_social, get_trending_spots
 from experiences import get_combined_experiences
 from llm import generate_itinerary
 from weather import get_weather_and_risk
-from yelp_backend import yelp_search
+from yelp_backend import search_yelp
 
 load_dotenv()
 
@@ -114,6 +114,7 @@ async def social(location: str, limit: int = 5):
 @app.get("/trends")
 async def trends(location: str = "Pune"):
     return await get_trending_spots(location)
+
 
 
 

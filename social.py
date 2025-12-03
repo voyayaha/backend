@@ -66,6 +66,7 @@ async def get_reddit_posts(query: str, limit: int = 5):
             "title": submission.title,
             "url": submission.url,
             "thumbnail": submission.thumbnail if submission.thumbnail.startswith("http") else None
+
         })
     return results
 
@@ -100,4 +101,5 @@ async def get_trending_spots(city: str):
         if city.lower() in post['title'].lower() or city.lower() in post.get('selftext', '').lower()
     ]
     return filtered[:10]  # return top 10 relevant
+
 

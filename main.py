@@ -12,6 +12,7 @@ from llm import generate_itinerary
 from weather import get_weather_and_risk
 from yelp_backend import search_yelp
 
+
 load_dotenv()
 
 app = FastAPI(title="Voyayaha – AI Travel Concierge")
@@ -20,6 +21,7 @@ origins = [
     "https://voyayaha.lovestoblog.com",
     "http://localhost:5173",
     "https://voyayaha.com",
+    "http://127.0.0.1:8000",
 ]
 
 app.add_middleware(
@@ -105,7 +107,10 @@ async def chat_experiences(
 # SOCIAL
 # ──────────────────────────────
 @app.get("/social")
-async def social(location: str, limit: int = 5):
+async def social(
+    location: str = Query(..., description="City or place to search social content for"),
+    limit: int = Query(5, description="Number of results")
+):
     return await scrape_social(location, limit)
 
 # ──────────────────────────────
@@ -114,8 +119,6 @@ async def social(location: str, limit: int = 5):
 @app.get("/trends")
 async def trends(location: str = "Pune"):
     return await get_trending_spots(location)
-
-
 
 
 

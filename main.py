@@ -102,23 +102,24 @@ async def chat_experiences(
         return {"error": f"LLM error: {str(e)}"}
 
 
-
-# ──────────────────────────────
-# SOCIAL
-# ──────────────────────────────
+# -----------------------------
+# SOCIAL ENDPOINT
+# -----------------------------
 @app.get("/social")
-async def social(
-    location: str = Query(..., description="City or place to search social content for"),
-    limit: int = Query(5, description="Number of results")
-):
-    return await scrape_social(location, limit)
+async def social(location: str = "Mumbai", limit: int = 5):
+    reddit_posts = await get_reddit_posts(location, limit)
+    youtube_posts = await get_youtube_posts(location, limit)
+    return youtube_posts + reddit_posts
 
-# ──────────────────────────────
-# TRENDS
-# ──────────────────────────────
+
+# -----------------------------
+# TRENDING SPOTS
+# -----------------------------
 @app.get("/trends")
 async def trends(location: str = "Pune"):
-    return await get_trending_spots(location)
+    query = f"{location} travel OR {location} places OR {location} itinerary"
+    return await get_reddit_posts(query, limit=8)
+
 
 
 

@@ -24,15 +24,6 @@ reddit = praw.Reddit(
     user_agent=REDDIT_USER_AGENT
 )
 
-app = FastAPI()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 # -----------------------------
 # REDDIT
 # -----------------------------
@@ -91,6 +82,7 @@ async def get_youtube_posts(query: str, limit: int = 5):
             })
 
         return results
+
 
 
 

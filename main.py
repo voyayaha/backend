@@ -6,7 +6,7 @@ import os
 import re
 
 from hotels import search_hotels
-from social import scrape_social, get_trending_spots
+from social import get_youtube_posts, get_reddit_posts
 from experiences import get_combined_experiences
 from llm import generate_itinerary
 from weather import get_weather_and_risk
@@ -119,6 +119,7 @@ async def social(
 @app.get("/trends")
 async def trends(location: str = "Pune"):
     return await get_trending_spots(location)
+
 
 
 

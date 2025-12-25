@@ -93,20 +93,5 @@ async def get_youtube_posts(query: str, limit: int = 5):
         return results
 
 
-# -----------------------------
-# SOCIAL ENDPOINT
-# -----------------------------
-@app.get("/social")
-async def social(location: str = "Mumbai", limit: int = 5):
-    reddit_posts = await get_reddit_posts(location, limit)
-    youtube_posts = await get_youtube_posts(location, limit)
-    return youtube_posts + reddit_posts
 
 
-# -----------------------------
-# TRENDING SPOTS
-# -----------------------------
-@app.get("/trends")
-async def trends(location: str = "Pune"):
-    query = f"{location} travel OR {location} places OR {location} itinerary"
-    return await get_reddit_posts(query, limit=8)

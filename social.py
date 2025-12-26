@@ -5,10 +5,13 @@ from dotenv import load_dotenv
 from urllib.parse import quote_plus
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 
 load_dotenv()
 
+# -----------------------------
 # ENV
+# -----------------------------
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 REDDIT_CLIENT_ID = os.getenv("REDDIT_CLIENT_ID")
 REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
@@ -17,12 +20,41 @@ REDDIT_USER_AGENT = os.getenv("REDDIT_USER_AGENT")
 if not all([YOUTUBE_API_KEY, REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, REDDIT_USER_AGENT]):
     raise EnvironmentError("Missing environment variables")
 
-# Reddit client
+# -----------------------------
+# REDDIT CLIENT
+# -----------------------------
 reddit = praw.Reddit(
     client_id=REDDIT_CLIENT_ID,
     client_secret=REDDIT_CLIENT_SECRET,
     user_agent=REDDIT_USER_AGENT
 )
+
+# -----------------------------
+# APP
+# -----------------------------
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# -----------------------------
+# IMAGE PROXY (🔥 KEY FIX)
+# -----------------------------
+@app.get("/img")
+async def proxy_image(url: str):
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.get(url)
+        return Response(
+            content=r.content,
+            media_type=r.headers.get("content-type", "image/jpeg")
+        )
+
+def proxify(url: str):
+    return f"/img?url={quote_plus(url)}" if url else None
 
 # -----------------------------
 # REDDIT
@@ -45,12 +77,11 @@ async def get_reddit_posts(query: str, limit: int = 5):
             "source": "reddit",
             "title": post.title,
             "description": post.selftext[:200] if post.selftext else f"From r/{post.subreddit}",
-            "image": image,
+            "image": proxify(image),  # ✅ PROXIED
             "url": f"https://www.reddit.com{post.permalink}"
         })
 
     return results
-
 
 # -----------------------------
 # YOUTUBE
@@ -77,13 +108,8 @@ async def get_youtube_posts(query: str, limit: int = 5):
                 "source": "youtube",
                 "title": s["title"],
                 "description": s["description"][:200],
-                "image": s["thumbnails"]["medium"]["url"],
+                "image": proxify(s["thumbnails"]["medium"]["url"]),  # ✅ PROXIED
                 "url": f"https://www.youtube.com/watch?v={vid}"
             })
 
         return results
-
-
-
-
-

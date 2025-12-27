@@ -13,7 +13,7 @@ load_dotenv()
 # CONFIG
 # --------------------------------------------------
 
-
+API_BASE = os.getenv("API_BASE")  # e.g. https://voyayaha-api.infinityfreeapp.com
 
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 REDDIT_CLIENT_ID = os.getenv("REDDIT_CLIENT_ID")

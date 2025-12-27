@@ -12,7 +12,7 @@ load_dotenv()
 # --------------------------------------------------
 # CONFIG
 # --------------------------------------------------
-
+API_BASE = https://backend-eqzz.onrender.com
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 REDDIT_CLIENT_ID = os.getenv("REDDIT_CLIENT_ID")
 REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
@@ -124,4 +124,5 @@ async def get_youtube_posts(query: str, limit: int = 5):
             })
 
         return results
+
 

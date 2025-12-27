@@ -103,7 +103,7 @@ async def chat_experiences(
 
 
 # -----------------------------
-# SOCIAL ENDPOINT
+# SOCIAL
 # -----------------------------
 @app.get("/social")
 async def social(location: str = "Mumbai", limit: int = 5):
@@ -111,14 +111,14 @@ async def social(location: str = "Mumbai", limit: int = 5):
     youtube_posts = await get_youtube_posts(location, limit)
     return youtube_posts + reddit_posts
 
-
 # -----------------------------
-# TRENDING SPOTS
+# TRENDS
 # -----------------------------
 @app.get("/trends")
 async def trends(location: str = "Pune"):
     query = f"{location} travel OR {location} places OR {location} itinerary"
     return await get_reddit_posts(query, limit=8)
+
 
 
 

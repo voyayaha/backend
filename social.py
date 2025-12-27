@@ -13,15 +13,13 @@ load_dotenv()
 # CONFIG
 # --------------------------------------------------
 
-API_BASE = os.getenv("API_BASE")  # e.g. https://voyayaha-api.infinityfreeapp.com
-
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 REDDIT_CLIENT_ID = os.getenv("REDDIT_CLIENT_ID")
 REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
 REDDIT_USER_AGENT = os.getenv("REDDIT_USER_AGENT")
 
 if not API_BASE:
-    raise EnvironmentError("API_BASE not set (example: https://your-backend-domain)")
+    raise EnvironmentError("API_BASE not set")
 
 if not all([YOUTUBE_API_KEY, REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, REDDIT_USER_AGENT]):
     raise EnvironmentError("Missing environment variables")

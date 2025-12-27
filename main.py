@@ -127,4 +127,3 @@ async def trends(location: str = "Pune"):
 
 
 
-

@@ -1,6 +1,9 @@
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
+from fastapi.responses import Response
+from urllib.parse import unquote
+import httpx
 from dotenv import load_dotenv
 import os
 import re
@@ -35,6 +38,21 @@ app.add_middleware(
 @app.get("/")
 def root():
     return {"status": "Voyayaha backend running"}
+
+@app.get("/img")
+async def proxy_image(url: str):
+    decoded = unquote(url)
+
+    async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+        r = await client.get(decoded)
+        r.raise_for_status()
+
+        return Response(
+            content=r.content,
+            media_type=r.headers.get("content-type", "image/jpeg"),
+            headers={"Cache-Control": "public, max-age=86400"}
+        )
+
 
 # ──────────────────────────────
 # EXPERIENCES 
@@ -118,6 +136,7 @@ async def social(location: str = "Mumbai", limit: int = 5):
 async def trends(location: str = "Pune"):
     query = f"{location} travel OR {location} places OR {location} itinerary"
     return await get_reddit_posts(query, limit=8)
+
 
 
 

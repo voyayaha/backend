@@ -29,32 +29,13 @@ reddit = praw.Reddit(
     user_agent=REDDIT_USER_AGENT
 )
 
-# -----------------------------
-# APP
-# -----------------------------
-app = FastAPI()
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
-# -----------------------------
-# IMAGE PROXY (🔥 KEY FIX)
-# -----------------------------
-@app.get("/img")
-async def proxy_image(url: str):
-    async with httpx.AsyncClient(timeout=10) as client:
-        r = await client.get(url)
-        return Response(
-            content=r.content,
-            media_type=r.headers.get("content-type", "image/jpeg")
-        )
+API_BASE = os.getenv("API_BASE", "https://backend-eqzz.onrender.com")
 
 def proxify(url: str):
-    return f"/img?url={quote_plus(url)}" if url else None
+    return f"{API_BASE}/img?url={quote_plus(url)}" if url else None
+
 
 # -----------------------------
 # REDDIT
@@ -113,3 +94,4 @@ async def get_youtube_posts(query: str, limit: int = 5):
             })
 
         return results
+

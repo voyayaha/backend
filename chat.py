@@ -3,10 +3,6 @@ from pydantic import BaseModel
 from datetime import datetime
 import json
 from llm import generate_zephyr_response
-from chat import register_chat_routes
-
-# Only needed if run standalone
-app = FastAPI()
 
 # -----------------------------
 # Models
@@ -24,40 +20,9 @@ class ExperienceRequest(BaseModel):
 def register_chat_routes(app: FastAPI):
 
     # ==========================================
-    # 1️⃣ GET route – for your current frontend
+    # POST route – only for future itinerary (LLM)
     # ==========================================
-    @app.get("/chat/experiences")
-    async def chat_experiences_get(
-        location: str,
-        budget: str = "",
-        activity: str = "",
-        duration: str = "",
-        motivation: str = ""
-    ):
-        # Basic safe fallback logic (no Viator, no strict filtering)
-
-        results = [
-            {
-                "title": f"Explore {location}",
-                "description": f"Top attractions and must-visit places in {location}."
-            },
-            {
-                "title": f"Food Walk in {location}",
-                "description": "Discover famous local food spots and street food."
-            },
-            {
-                "title": f"Heritage Tour of {location}",
-                "description": "Visit historical landmarks and cultural sites."
-            }
-        ]
-
-        return {"stops": results}
-
-
-    # ==========================================
-    # 2️⃣ POST route – for future itinerary (LLM)
-    # ==========================================
-    @app.post("/chat/experiences")
+    @app.post("/chat/experiences/itinerary")
     async def chat_experiences_post(data: ExperienceRequest):
         try:
             checkin_date = datetime.strptime(data.checkin, "%Y-%m-%d")
@@ -93,4 +58,3 @@ Output only the JSON array — no extra text.
 
         except Exception as e:
             return {"response": [], "error": f"Error generating experiences: {e}"}
-

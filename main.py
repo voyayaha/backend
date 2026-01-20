@@ -6,6 +6,7 @@ import httpx
 from dotenv import load_dotenv
 import os
 
+from chat import register_chat_routes
 from hotels import search_hotels
 from social import get_youtube_posts, get_reddit_posts
 from experiences import get_combined_experiences
@@ -15,6 +16,7 @@ from weather import get_weather_and_risk
 load_dotenv()
 
 app = FastAPI(title="Voyayaha – AI Travel Concierge")
+register_chat_routes(app)
 
 # -----------------------------
 # CORS
@@ -180,3 +182,4 @@ async def social(location: str = "Mumbai", limit: int = 5):
 async def trends(location: str = "Pune"):
     query = f"{location} travel OR {location} places OR {location} itinerary"
     return await get_reddit_posts(query, limit=8)
+

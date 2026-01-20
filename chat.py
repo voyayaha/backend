@@ -1,20 +1,63 @@
-# chat.py
 from fastapi import FastAPI
 from pydantic import BaseModel
 from datetime import datetime
 import json
 from llm import generate_zephyr_response
 
-app = FastAPI()  # only needed if run standalone; ignore when importing in main.py
+# Only needed if run standalone
+app = FastAPI()
+
+# -----------------------------
+# Models
+# -----------------------------
 
 class ExperienceRequest(BaseModel):
     location: str
-    checkin: str  # Format: "2025-08-04"
+    checkin: str  # "2025-08-04"
     checkout: str
 
+# -----------------------------
+# Route registration
+# -----------------------------
+
 def register_chat_routes(app: FastAPI):
+
+    # ==========================================
+    # 1️⃣ GET route – for your current frontend
+    # ==========================================
+    @app.get("/chat/experiences")
+    async def chat_experiences_get(
+        location: str,
+        budget: str = "",
+        activity: str = "",
+        duration: str = "",
+        motivation: str = ""
+    ):
+        # Basic safe fallback logic (no Viator, no strict filtering)
+
+        results = [
+            {
+                "title": f"Explore {location}",
+                "description": f"Top attractions and must-visit places in {location}."
+            },
+            {
+                "title": f"Food Walk in {location}",
+                "description": "Discover famous local food spots and street food."
+            },
+            {
+                "title": f"Heritage Tour of {location}",
+                "description": "Visit historical landmarks and cultural sites."
+            }
+        ]
+
+        return {"stops": results}
+
+
+    # ==========================================
+    # 2️⃣ POST route – for future itinerary (LLM)
+    # ==========================================
     @app.post("/chat/experiences")
-    async def chat_experiences(data: ExperienceRequest):
+    async def chat_experiences_post(data: ExperienceRequest):
         try:
             checkin_date = datetime.strptime(data.checkin, "%Y-%m-%d")
             checkout_date = datetime.strptime(data.checkout, "%Y-%m-%d")
@@ -22,6 +65,7 @@ def register_chat_routes(app: FastAPI):
 
             prompt = f"""
 You are a travel assistant. The user is visiting {data.location} between {data.checkin} and {data.checkout} ({duration_days} days).
+
 Generate a JSON array of daily experiences.
 
 Each item in the array must be:
@@ -31,12 +75,13 @@ Each item in the array must be:
   "description": "Walk along the sea during the misty morning."
 }}
 
-Include at least 3 experiences per day. Output only the JSON array — no extra text.
+Include at least 3 experiences per day.
+Output only the JSON array — no extra text.
             """
 
             llm_output = generate_zephyr_response(prompt, max_tokens=1500)
 
-            # Clean and parse output
+            # Clean LLM output
             llm_output_cleaned = llm_output.strip()
             if llm_output_cleaned.startswith("```json"):
                 llm_output_cleaned = llm_output_cleaned.split("```json")[-1].split("```")[0].strip()
@@ -46,4 +91,4 @@ Include at least 3 experiences per day. Output only the JSON array — no extra 
             return {"response": experiences}
 
         except Exception as e:
-            return {"response": f"Error generating experiences: {e}"}
+            return {"response": [], "error": f"Error generating experiences: {e}"}

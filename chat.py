@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from datetime import datetime
 import json
 from llm import generate_zephyr_response
+from chat import register_chat_routes
 
 # Only needed if run standalone
 app = FastAPI()
@@ -92,3 +93,4 @@ Output only the JSON array — no extra text.
 
         except Exception as e:
             return {"response": [], "error": f"Error generating experiences: {e}"}
+

@@ -34,14 +34,14 @@ def register_chat_routes(app: FastAPI):
             checkin_date = datetime.strptime(data.checkin, "%Y-%m-%d")
             checkout_date = datetime.strptime(data.checkout, "%Y-%m-%d")
             duration_days = (checkout_date - checkin_date).days
-			
-			if duration_days <= 1:
-				experiences_per_day = 3   # half-day or full-day
-			else:
-				experiences_per_day = 2   # multi-day
 
-			total_experiences = max(1, duration_days) * experiences_per_day
+            # ✅ Decide experiences per day
+            if duration_days <= 1:
+                experiences_per_day = 3   # half-day or full-day
+            else:
+                experiences_per_day = 2   # multi-day
 
+            total_experiences = max(1, duration_days) * experiences_per_day
 
             prompt = f"""
 You are a travel assistant. The user is visiting {data.location} between {data.checkin} and {data.checkout} ({duration_days} days).
@@ -62,7 +62,6 @@ Each item in the array must be:
 
 Output only the JSON array — no extra text.
 """
-
 
             llm_output = generate_itinerary(prompt)
 

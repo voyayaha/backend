@@ -84,13 +84,10 @@ async def chat_experiences(
     motivation: str = "",
 ):
     """
-    This endpoint always returns a usable itinerary-style response.
-    It NEVER returns empty stops.
+    Returns a city-focused mini itinerary with top 3 places per recommendation.
     """
 
-    # -----------------------------
     # Step 1: Fetch nearby places (Yelp + Geoapify fallback)
-    # -----------------------------
     stops_data = await get_combined_experiences(location, activity or "tourist")
 
     yelp_results = stops_data.get("yelp", [])
@@ -98,92 +95,85 @@ async def chat_experiences(
 
     final_stops = yelp_results + geo_results
 
-    # -----------------------------
-    # Step 2: If NOTHING found → Safe Static Fallback Itinerary
-    # -----------------------------
+    # Step 2: SAFE FALLBACK (if APIs give nothing)
     if not final_stops:
         fallback = [
             {
                 "title": f"Explore {location}",
-                "description": f"Popular attractions and must-visit places in {location}.",
-                "why_it_fits": f"Great for first-time visitors exploring {location}."
-            },
-            {
-                "title": f"Food Walk in {location}",
-                "description": "Discover famous local food spots and street food.",
-                "why_it_fits": "Perfect if you enjoy local cuisine and cultural experiences."
-            },
-            {
-                "title": f"Heritage Tour of {location}",
-                "description": "Visit historical landmarks and cultural sites.",
-                "why_it_fits": "Ideal for history lovers and cultural travelers."
+                "intro": f"Here are the top things travelers usually enjoy in {location}:",
+                "top_places": [
+                    {"name": f"Famous Landmark of {location}", "tip": "Visit the main historical attraction."},
+                    {"name": f"Local Market of {location}", "tip": "Try local food and shopping."},
+                    {"name": f"Scenic Area of {location}", "tip": "Relax and enjoy the city views."},
+                ]
             }
         ]
-
         return {"stops": fallback}
 
-    # -----------------------------
-    # Step 3: Build prompt for LLM (to generate itinerary)
-    # -----------------------------
+    # Step 3: Build LLM prompt for structured city guide
     prompt = f"""
-You are Voyayaha AI Trip Planner.
+You are Voyayaha AI Travel Guide.
 
-User preferences:
-Location: {location}
-Budget: {budget}
-Activity: {activity}
-Duration: {duration}
-Motivation: {motivation}
+User is planning a trip to: {location}
 
-Here are nearby places:
+Based on common traveler preferences, generate 3–4 recommendations.
+
+Each recommendation must be a JSON object with:
+
+- title: short heading (e.g. "Explore Bangkok")
+- intro: 1-line intro about what people like to do in this city
+- top_places: an array of exactly 3 items, each with:
+    - name: place name
+    - tip: what the traveler can do there
+
+Example format:
+
+[
+  {{
+    "title": "Explore Paris",
+    "intro": "Paris is famous for art, romance, and historic landmarks.",
+    "top_places": [
+      {{"name": "Eiffel Tower", "tip": "Enjoy city views from the top."}},
+      {{"name": "Louvre Museum", "tip": "Explore world-famous artworks."}},
+      {{"name": "Seine River Cruise", "tip": "Relax with an evening cruise."}}
+    ]
+  }}
+]
+
+Here are some nearby places for reference:
 {final_stops}
 
-Generate 4–6 travel stops as a JSON array.
-
-Each item MUST have:
-- title
-- description
-- why_it_fits
-
-The output must be valid JSON only. No explanation text.
+Return ONLY valid JSON. No extra text.
 """
 
-    # -----------------------------
     # Step 4: Call LLM
-    # -----------------------------
     try:
         ai_output = generate_itinerary(prompt)
 
-        # -----------------------------
-        # If LLM returns empty or invalid → Normalize raw places
-        # -----------------------------
-        if not ai_output or not isinstance(ai_output, list) or len(ai_output) == 0:
-            safe_stops = normalize_stops(final_stops[:5], location, motivation)
-            return {"stops": safe_stops}
+        # Validate structure
+        if not ai_output or not isinstance(ai_output, list):
+            raise ValueError("Invalid AI output")
 
-        # -----------------------------
-        # Final safety: ensure each item has required fields
-        # -----------------------------
-        cleaned = []
-        for s in ai_output:
-            cleaned.append({
-                "title": s.get("title", f"Explore {location}"),
-                "description": s.get("description", "Enjoy this experience during your trip."),
-                "why_it_fits": s.get("why_it_fits", f"Matches your interest in {motivation or 'travel'}")
-            })
-
-        return {"stops": cleaned}
+        return {"stops": ai_output}
 
     except Exception as e:
-        # -----------------------------
-        # Final Emergency Fallback
-        # -----------------------------
-        safe_stops = normalize_stops(final_stops[:5], location, motivation)
-
+        # Final fallback if LLM fails
+        safe = [
+            {
+                "title": f"Explore {location}",
+                "intro": f"{location} is popular for sightseeing, food, and local culture.",
+                "top_places": [
+                    {"name": "City Center", "tip": "Walk around and explore main attractions."},
+                    {"name": "Local Market", "tip": "Try local cuisine and shopping."},
+                    {"name": "Famous Landmark", "tip": "Visit the most iconic place in the city."},
+                ]
+            }
+        ]
         return {
-            "stops": safe_stops,
-            "warning": f"LLM failed, returned normalized results instead: {str(e)}"
+            "stops": safe,
+            "warning": f"LLM failed, using fallback: {str(e)}"
         }
+
 # -----------------------------
 # EXPERIENCES (RAW DATA)
 # -----------------------------
@@ -228,6 +218,7 @@ async def social(location: str = "Mumbai", limit: int = 5):
 async def trends(location: str = "Pune"):
     query = f"{location} travel OR {location} places OR {location} itinerary"
     return await get_reddit_posts(query, limit=8)
+
 
 
 

@@ -22,11 +22,11 @@ class ExperienceRequest(BaseModel):
 
 def register_chat_routes(app: FastAPI):
 
-    # ❌ DO NOT DEFINE GET /chat/experiences HERE
-    # You are correctly using POST only
+    # ❌ REMOVE THE GET ROUTE COMPLETELY
+    # DO NOT DEFINE @app.get("/chat/experiences") HERE
 
     # ==========================================
-    # POST route – daily itineraries (FIXED)
+    # POST route – for future daily itineraries
     # ==========================================
     @app.post("/chat/experiences")
     async def chat_experiences_post(data: ExperienceRequest):
@@ -34,57 +34,48 @@ def register_chat_routes(app: FastAPI):
             checkin_date = datetime.strptime(data.checkin, "%Y-%m-%d")
             checkout_date = datetime.strptime(data.checkout, "%Y-%m-%d")
             duration_days = (checkout_date - checkin_date).days
+			
+			if duration_days <= 1:
+				experiences_per_day = 3   # half-day or full-day
+			else:
+				experiences_per_day = 2   # multi-day
 
-            # 🔑 Total activities = days * 2
-            total_items = max(duration_days * 2, 2)
+			total_experiences = max(1, duration_days) * experiences_per_day
+
 
             prompt = f"""
-You are a travel assistant.
-
-The user is visiting {data.location} between {data.checkin} and {data.checkout} ({duration_days} days).
-
-Generate EXACTLY {total_items} travel activities.
+You are a travel assistant. The user is visiting {data.location} between {data.checkin} and {data.checkout} ({duration_days} days).
 
 Rules:
-- Suggest 2 activities per day.
-- Spread them logically across days.
-- Each item must be a JSON object with:
+- If the trip is 1 day or less, suggest at least 3 experiences.
+- If the trip is more than 1 day, suggest exactly 2 experiences per day.
+- Total number of experiences must be {total_experiences}.
 
+Generate a JSON array of daily experiences.
+
+Each item in the array must be:
 {{
-  "day": "Day 1",
   "title": "Marine Drive",
   "time": "9:00 am - 10:30 am",
   "description": "Walk along the sea during the misty morning."
 }}
 
-IMPORTANT:
-- Output a JSON array with exactly {total_items} items.
-- Do NOT add extra text.
-- Do NOT add more or fewer items.
+Output only the JSON array — no extra text.
 """
+
 
             llm_output = generate_itinerary(prompt)
 
-            # If LLM already returns list
             if isinstance(llm_output, list):
-                # 🔑 Enforce correct count
-                trimmed = llm_output[:total_items]
-                return {"response": trimmed}
+                return {"response": llm_output}
 
-            # Else parse string output
             llm_output_cleaned = llm_output.strip()
             if llm_output_cleaned.startswith("```json"):
                 llm_output_cleaned = llm_output_cleaned.split("```json")[-1].split("```")[0].strip()
 
             experiences = json.loads(llm_output_cleaned)
 
-            # 🔑 Enforce correct count again
-            experiences = experiences[:total_items]
-
             return {"response": experiences}
 
         except Exception as e:
-            return {
-                "response": [],
-                "error": f"Error generating experiences: {e}"
-            }
+            return {"response": [], "error": f"Error generating experiences: {e}"}

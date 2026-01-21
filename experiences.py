@@ -7,25 +7,30 @@ GEOAPIFY_API_KEY = os.getenv("GEOAPIFY_API_KEY")
 
 
 async def search_geoapify(location: str, query: str):
+    """
+    Geoapify fallback search for POIs (FIXED)
+    """
     if not GEOAPIFY_API_KEY:
         print("❌ GEOAPIFY_API_KEY not set")
         return []
 
     url = "https://api.geoapify.com/v2/places"
 
+    # ✅ IMPORTANT: add filter to satisfy Geoapify requirements
     params = {
-        "text": f"{query} in {location}",
-        "categories": "tourism.attraction,entertainment,museum,leisure",
-        "limit": 10,
+        "text": f"{query}",
+        "filter": f"place:city:{location}",
+        "limit": 12,
         "apiKey": GEOAPIFY_API_KEY,
     }
 
     try:
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
             async with session.get(url, params=params) as res:
+                text = await res.text()
+
                 if res.status != 200:
                     print("❌ Geoapify HTTP error:", res.status)
-                    text = await res.text()
                     print("Geoapify response:", text)
                     return []
 
@@ -52,7 +57,6 @@ async def search_geoapify(location: str, query: str):
     except Exception as e:
         print("❌ Geoapify exception:", str(e))
         return []
-
 
 async def get_combined_experiences(location: str, query: str):
     print(f"🔎 Searching experiences for: {location} | query: {query}")
@@ -99,3 +103,4 @@ async def get_combined_experiences(location: str, query: str):
         "yelp": yelp_results,
         "geoapify": geo_results
     }
+

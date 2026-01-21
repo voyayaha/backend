@@ -183,3 +183,4 @@ async def trends(location: str = "Pune"):
     query = f"{location} travel OR {location} places OR {location} itinerary"
     return await get_reddit_posts(query, limit=8)
 
+

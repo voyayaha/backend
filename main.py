@@ -59,7 +59,131 @@ async def proxy_image(url: str):
             media_type=r.headers.get("content-type", "image/jpeg"),
             headers={"Cache-Control": "public, max-age=86400"}
         )
+def normalize_stops(stops, location, motivation):
+    normalized = []
 
+    for s in stops:
+        normalized.append({
+            "title": s.get("title") or s.get("name") or f"Explore {location}",
+            "description": s.get("description") or "Enjoy this recommended place during your trip.",
+            "why_it_fits": f"Matches your interest in {motivation or 'exploring new places'}."
+        })
+
+    return normalized
+
+
+# -----------------------------
+# Main Endpoint
+# -----------------------------
+@app.get("/chat/experiences")
+async def chat_experiences(
+    location: str = Query(...),
+    budget: str = "",
+    activity: str = "",
+    duration: str = "",
+    motivation: str = "",
+):
+    """
+    This endpoint always returns a usable itinerary-style response.
+    It NEVER returns empty stops.
+    """
+
+    # -----------------------------
+    # Step 1: Fetch nearby places (Yelp + Geoapify fallback)
+    # -----------------------------
+    stops_data = await get_combined_experiences(location, activity or "tourist")
+
+    yelp_results = stops_data.get("yelp", [])
+    geo_results = stops_data.get("geoapify", [])
+
+    final_stops = yelp_results + geo_results
+
+    # -----------------------------
+    # Step 2: If NOTHING found → Safe Static Fallback Itinerary
+    # -----------------------------
+    if not final_stops:
+        fallback = [
+            {
+                "title": f"Explore {location}",
+                "description": f"Popular attractions and must-visit places in {location}.",
+                "why_it_fits": f"Great for first-time visitors exploring {location}."
+            },
+            {
+                "title": f"Food Walk in {location}",
+                "description": "Discover famous local food spots and street food.",
+                "why_it_fits": "Perfect if you enjoy local cuisine and cultural experiences."
+            },
+            {
+                "title": f"Heritage Tour of {location}",
+                "description": "Visit historical landmarks and cultural sites.",
+                "why_it_fits": "Ideal for history lovers and cultural travelers."
+            }
+        ]
+
+        return {"stops": fallback}
+
+    # -----------------------------
+    # Step 3: Build prompt for LLM (to generate itinerary)
+    # -----------------------------
+    prompt = f"""
+You are Voyayaha AI Trip Planner.
+
+User preferences:
+Location: {location}
+Budget: {budget}
+Activity: {activity}
+Duration: {duration}
+Motivation: {motivation}
+
+Here are nearby places:
+{final_stops}
+
+Generate 4–6 travel stops as a JSON array.
+
+Each item MUST have:
+- title
+- description
+- why_it_fits
+
+The output must be valid JSON only. No explanation text.
+"""
+
+    # -----------------------------
+    # Step 4: Call LLM
+    # -----------------------------
+    try:
+        ai_output = generate_itinerary(prompt)
+
+        # -----------------------------
+        # If LLM returns empty or invalid → Normalize raw places
+        # -----------------------------
+        if not ai_output or not isinstance(ai_output, list) or len(ai_output) == 0:
+            safe_stops = normalize_stops(final_stops[:5], location, motivation)
+            return {"stops": safe_stops}
+
+        # -----------------------------
+        # Final safety: ensure each item has required fields
+        # -----------------------------
+        cleaned = []
+        for s in ai_output:
+            cleaned.append({
+                "title": s.get("title", f"Explore {location}"),
+                "description": s.get("description", "Enjoy this experience during your trip."),
+                "why_it_fits": s.get("why_it_fits", f"Matches your interest in {motivation or 'travel'}")
+            })
+
+        return {"stops": cleaned}
+
+    except Exception as e:
+        # -----------------------------
+        # Final Emergency Fallback
+        # -----------------------------
+        safe_stops = normalize_stops(final_stops[:5], location, motivation)
+
+        return {
+            "stops": safe_stops,
+            "warning": f"LLM failed, returned normalized results instead: {str(e)}"
+        }
 # -----------------------------
 # EXPERIENCES (RAW DATA)
 # -----------------------------
@@ -87,84 +211,6 @@ async def weather(location: str):
 # -----------------------------
 # CHAT / FRONTEND RECOMMENDATIONS (FIXED)
 # -----------------------------
-@app.get("/chat/experiences")
-async def chat_experiences(
-    location: str = Query(...),
-    budget: str = "",
-    activity: str = "",
-    duration: str = "",
-    motivation: str = "",
-):
-    """
-    This is the endpoint your frontend calls.
-    It will NEVER return empty stops now.
-    """
-
-    # Step 1: Fetch nearby places (Yelp + Geoapify fallback)
-    stops_data = await get_combined_experiences(location, activity or "tourist")
-
-    yelp_results = stops_data.get("yelp", [])
-    geo_results = stops_data.get("geoapify", [])
-
-    final_stops = yelp_results + geo_results
-
-    # Step 2: If nothing found, use SAFE FALLBACK (no empty UI)
-    if not final_stops:
-        fallback = [
-            {
-                "title": f"Explore {location}",
-                "description": f"Popular attractions and must-visit places in {location}."
-            },
-            {
-                "title": f"Food Walk in {location}",
-                "description": "Discover famous local food spots and street food."
-            },
-            {
-                "title": f"Heritage Tour of {location}",
-                "description": "Visit historical landmarks and cultural sites."
-            }
-        ]
-        return {"stops": fallback}
-
-    # Step 3: Build prompt for LLM
-    prompt = f"""
-You are Voyayaha AI Trip Planner.
-
-User preferences:
-Location: {location}
-Budget: {budget}
-Activity: {activity}
-Duration: {duration}
-Motivation: {motivation}
-
-Here are nearby places:
-{final_stops}
-
-Generate 4–6 travel stops as a JSON array.
-Each item must have:
-- title
-- description
-- why_it_fits
-
-Output only JSON. No extra text.
-"""
-
-    # Step 4: Call LLM
-    try:
-        ai_output = generate_itinerary(prompt)
-
-        # If LLM returns empty or invalid, fallback again
-        if not ai_output or len(ai_output) == 0:
-            return {"stops": final_stops[:5]}
-
-        return {"stops": ai_output}
-
-    except Exception as e:
-        # Final safety fallback
-        return {
-            "stops": final_stops[:5],
-            "warning": f"LLM failed, returned raw results instead: {str(e)}"
-        }
 
 # -----------------------------
 # SOCIAL
@@ -182,5 +228,6 @@ async def social(location: str = "Mumbai", limit: int = 5):
 async def trends(location: str = "Pune"):
     query = f"{location} travel OR {location} places OR {location} itinerary"
     return await get_reddit_posts(query, limit=8)
+
 
 

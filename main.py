@@ -62,141 +62,6 @@ async def proxy_image(url: str):
 
 
 
-# -----------------------------
-# Main Endpoint
-# -----------------------------
-@app.get("/chat/experiences")
-async def chat_experiences(
-    location: str = Query(...),
-    budget: str = "",
-    activity: str = "",
-    duration: str = "",
-    motivation: str = "",
-):
-    """
-    Always returns CITY-GUIDE STYLE itinerary:
-    - title
-    - intro
-    - top_places (3 items)
-    """
-
-    # 1. Get experiences + weather-aware query
-    try:
-        stops_data = await get_combined_experiences(location, activity or "tourist")
-        yelp_results = stops_data.get("yelp", [])
-        geo_results = stops_data.get("geoapify", [])
-        weather = stops_data.get("weather", {})
-        indoor_only = stops_data.get("indoor_only", True)
-        final_stops = yelp_results + geo_results
-    except Exception as e:
-        print("Experience APIs failed:", e)
-        final_stops = []
-        weather = {"summary": "Unknown", "temperature_c": "N/A", "indoor_preferred": True}
-        indoor_only = True
-
-    print("🌦 Weather used in planning:", weather)
-    print("🏠 Indoor preferred:", indoor_only)
-    print("📍 Nearby places count:", len(final_stops))
-
-    # 2. Add weather instruction to prompt
-    weather_instruction = ""
-    if indoor_only:
-        weather_instruction = "The weather is bad. Prefer indoor activities like museums, cafes, malls, shows."
-    else:
-        weather_instruction = "The weather is good. Prefer outdoor activities like sightseeing, parks, walking tours."
-
-    prompt = f"""
-You are Voyayaha AI Travel Guide.
-
-The user is visiting: {location}
-
-User preferences:
-Budget: {budget}
-Activity: {activity}
-Duration: {duration}
-Motivation: {motivation}
-
-Current weather:
-Condition: {weather.get("summary")}
-Temperature (C): {weather.get("temperature_c")}
-Instruction: {weather_instruction}
-
-Your task:
-Generate 3 travel recommendations in CITY GUIDE style.
-
-Each recommendation MUST be a JSON object with:
-
-- title: short heading
-- intro: 1–2 lines describing what people generally enjoy in {location}
-- top_places: an array of exactly 3 objects:
-    - name: famous place or activity in {location}
-    - tip: what the traveler can do there and why it's good
-
-IMPORTANT:
-- Give REAL, city-specific places.
-- Adapt suggestions based on weather (indoor vs outdoor).
-
-Example format:
-
-[
-  {{
-    "title": "Highlights of Paris",
-    "intro": "Paris is famous for romance, art, and iconic landmarks.",
-    "top_places": [
-      {{"name": "Eiffel Tower", "tip": "Enjoy panoramic views of the city."}},
-      {{"name": "Louvre Museum", "tip": "Explore world-famous artworks."}},
-      {{"name": "Seine Cruise", "tip": "Relax with an evening boat ride."}}
-    ]
-  }}
-]
-
-Nearby places for reference:
-{final_stops}
-
-Return ONLY valid JSON. No extra text.
-"""
-
-    # 3. Call LLM
-    try:
-        ai_output = generate_itinerary(prompt)
-
-        print("🧠 LLM RAW OUTPUT:", ai_output)
-
-        if not ai_output or not isinstance(ai_output, list):
-            raise ValueError("Invalid AI output")
-
-        cleaned = []
-
-        for item in ai_output:
-            cleaned.append({
-                "title": item.get("title", f"Highlights of {location}"),
-                "intro": item.get("intro", f"{location} is popular for sightseeing, food, and culture."),
-                "top_places": item.get("top_places", [])[:3]
-            })
-
-        return {"stops": cleaned}
-
-    except Exception as e:
-        print("❌ LLM failed:", e)
-
-        safe = [
-            {
-                "title": f"Highlights of {location}",
-                "intro": f"{location} is known for its culture, food, and famous attractions.",
-                "top_places": [
-                    {"name": "City Center", "tip": "Walk around and explore major landmarks."},
-                    {"name": "Local Market", "tip": "Try local cuisine and street food."},
-                    {"name": "Famous Landmark", "tip": "Visit the most iconic place in the city."}
-                ]
-            }
-        ]
-
-        return {
-            "stops": safe,
-            "warning": f"LLM failed, used structured fallback: {str(e)}"
-        }
-
-
 
 # -----------------------------
 # EXPERIENCES (RAW DATA)
@@ -242,6 +107,7 @@ async def social(location: str = "Mumbai", limit: int = 5):
 async def trends(location: str = "Pune"):
     query = f"{location} travel OR {location} places OR {location} itinerary"
     return await get_reddit_posts(query, limit=8)
+
 
 
 

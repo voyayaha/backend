@@ -84,7 +84,10 @@ async def chat_experiences(
     motivation: str = "",
 ):
     """
-    Returns a city-focused mini itinerary with top 3 places per recommendation.
+    Returns city guide style recommendations:
+    - title
+    - intro
+    - top_places (3 items)
     """
 
     # Step 1: Fetch nearby places (Yelp + Geoapify fallback)
@@ -95,38 +98,38 @@ async def chat_experiences(
 
     final_stops = yelp_results + geo_results
 
-    # Step 2: SAFE FALLBACK (if APIs give nothing)
+    # Step 2: If APIs give nothing → hard fallback
     if not final_stops:
         fallback = [
             {
                 "title": f"Explore {location}",
-                "intro": f"Here are the top things travelers usually enjoy in {location}:",
+                "intro": f"{location} is popular for sightseeing, food, and local culture.",
                 "top_places": [
-                    {"name": f"Famous Landmark of {location}", "tip": "Visit the main historical attraction."},
-                    {"name": f"Local Market of {location}", "tip": "Try local food and shopping."},
-                    {"name": f"Scenic Area of {location}", "tip": "Relax and enjoy the city views."},
+                    {"name": f"Famous Landmark in {location}", "tip": "Visit the main historical attraction."},
+                    {"name": f"Local Market in {location}", "tip": "Try local food and shopping."},
+                    {"name": f"Scenic Area in {location}", "tip": "Relax and enjoy city views."}
                 ]
             }
         ]
         return {"stops": fallback}
 
-    # Step 3: Build LLM prompt for structured city guide
+    # Step 3: LLM prompt for structured output
     prompt = f"""
 You are Voyayaha AI Travel Guide.
 
-User is planning a trip to: {location}
+The user is visiting: {location}
 
-Based on common traveler preferences, generate 3–4 recommendations.
+Generate 3 recommendations.
 
-Each recommendation must be a JSON object with:
+Each recommendation MUST be a JSON object with:
 
-- title: short heading (e.g. "Explore Bangkok")
-- intro: 1-line intro about what people like to do in this city
-- top_places: an array of exactly 3 items, each with:
+- title: short heading
+- intro: 1–2 lines describing what people like to do in this city
+- top_places: an array of exactly 3 objects:
     - name: place name
     - tip: what the traveler can do there
 
-Example format:
+Example:
 
 [
   {{
@@ -150,29 +153,39 @@ Return ONLY valid JSON. No extra text.
     try:
         ai_output = generate_itinerary(prompt)
 
-        # Validate structure
+        # Validate output
         if not ai_output or not isinstance(ai_output, list):
-            raise ValueError("Invalid AI output")
+            raise ValueError("Invalid AI output format")
 
-        return {"stops": ai_output}
+        # Ensure required keys exist
+        cleaned = []
+        for item in ai_output:
+            cleaned.append({
+                "title": item.get("title", f"Explore {location}"),
+                "intro": item.get("intro", f"{location} is popular for travel and sightseeing."),
+                "top_places": item.get("top_places", [])[:3]
+            })
+
+        return {"stops": cleaned}
 
     except Exception as e:
-        # Final fallback if LLM fails
+        # Final safe fallback
         safe = [
             {
                 "title": f"Explore {location}",
-                "intro": f"{location} is popular for sightseeing, food, and local culture.",
+                "intro": f"{location} is popular for sightseeing, food, and culture.",
                 "top_places": [
                     {"name": "City Center", "tip": "Walk around and explore main attractions."},
                     {"name": "Local Market", "tip": "Try local cuisine and shopping."},
-                    {"name": "Famous Landmark", "tip": "Visit the most iconic place in the city."},
+                    {"name": "Famous Landmark", "tip": "Visit the most iconic place in the city."}
                 ]
             }
         ]
         return {
             "stops": safe,
-            "warning": f"LLM failed, using fallback: {str(e)}"
+            "warning": f"LLM failed, used fallback: {str(e)}"
         }
+
 
 # -----------------------------
 # EXPERIENCES (RAW DATA)
@@ -218,6 +231,7 @@ async def social(location: str = "Mumbai", limit: int = 5):
 async def trends(location: str = "Pune"):
     query = f"{location} travel OR {location} places OR {location} itinerary"
     return await get_reddit_posts(query, limit=8)
+
 
 
 

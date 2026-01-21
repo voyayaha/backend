@@ -7,12 +7,13 @@ WEATHERAPI_KEY = os.getenv("WEATHERAPI_KEY")
 async def get_weather_and_risk(location: str):
     try:
         async with httpx.AsyncClient(timeout=10) as client:
-            url = f"http://api.weatherapi.com/v1/current.json"
+            url = "https://api.weatherapi.com/v1/current.json"  # HTTPS
             params = {
                 "key": WEATHERAPI_KEY,
                 "q": location,
                 "aqi": "no"
             }
+
             r = await client.get(url, params=params)
             r.raise_for_status()
             data = r.json()
@@ -20,7 +21,6 @@ async def get_weather_and_risk(location: str):
             condition = data["current"]["condition"]["text"].lower()
             temp_c = data["current"]["temp_c"]
 
-            # Basic indoor/outdoor suggestion
             indoor_preferred = any(word in condition for word in [
                 "rain", "snow", "storm", "fog", "drizzle", "wind"
             ])
@@ -35,6 +35,6 @@ async def get_weather_and_risk(location: str):
         print("WeatherAPI error:", e)
         return {
             "summary": "Unknown",
-            "temperature_c": "N/A",
+            "temperature_c": None,
             "indoor_preferred": True
         }

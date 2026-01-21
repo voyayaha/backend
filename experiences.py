@@ -56,23 +56,29 @@ async def search_geoapify(location: str, query: str):
 
 
 async def get_combined_experiences(location: str, query: str):
-    """
-    Returns:
-      - weather
-      - yelp results
-      - geoapify fallback results
-    """
-
     print(f"🔎 Searching experiences for: {location} | query: {query}")
 
-    # 1. Weather
+    # 1. Weather (USE YOUR FUNCTION)
     try:
-        weather = await get_weather(location)
+        weather = await get_weather_and_risk(location)
+        print("🌦 Weather:", weather)
     except Exception as e:
         print("❌ Weather error:", e)
-        weather = None
+        weather = {
+            "summary": "Unknown",
+            "temperature_c": "N/A",
+            "indoor_preferred": True
+        }
 
-    # 2. Yelp search
+    indoor_only = weather.get("indoor_preferred", True)
+
+    # 🔑 Modify query based on weather
+    if indoor_only:
+        query = query + " indoor"
+    else:
+        query = query + " outdoor"
+
+    # 2. Yelp
     try:
         yelp_results = await search_yelp(location, query)
         print(f"✅ Yelp results: {len(yelp_results)}")
@@ -80,16 +86,17 @@ async def get_combined_experiences(location: str, query: str):
         print("❌ Yelp error:", e)
         yelp_results = []
 
-    # 3. Geoapify always try (not only when Yelp is empty)
+    # 3. Geoapify
     geo_results = await search_geoapify(location, query)
 
-    # 4. If both empty, try very generic query
+    # 4. Fallback
     if not yelp_results and not geo_results:
         print("⚠️ Both empty, trying generic 'tourist attractions'")
         geo_results = await search_geoapify(location, "tourist attractions")
 
     return {
         "weather": weather,
+        "indoor_only": indoor_only,
         "yelp": yelp_results,
         "geoapify": geo_results
     }

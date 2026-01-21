@@ -22,38 +22,11 @@ class ExperienceRequest(BaseModel):
 
 def register_chat_routes(app: FastAPI):
 
-    # ==========================================
-    # 1️⃣ GET route – for your current frontend
-    # ==========================================
-    @app.get("/chat/experiences")
-    async def chat_experiences_get(
-        location: str,
-        budget: str = "",
-        activity: str = "",
-        duration: str = "",
-        motivation: str = ""
-    ):
-        # Simple deterministic fallback (no LLM, no Viator)
-
-        results = [
-            {
-                "title": f"Explore {location}",
-                "description": f"Top attractions and must-visit places in {location}."
-            },
-            {
-                "title": f"Food Walk in {location}",
-                "description": "Discover famous local food spots and street food."
-            },
-            {
-                "title": f"Heritage Tour of {location}",
-                "description": "Visit historical landmarks and cultural sites."
-            }
-        ]
-
-        return {"stops": results}
+    # ❌ REMOVE THE GET ROUTE COMPLETELY
+    # DO NOT DEFINE @app.get("/chat/experiences") HERE
 
     # ==========================================
-    # 2️⃣ POST route – for future itinerary (LLM)
+    # POST route – for future daily itineraries
     # ==========================================
     @app.post("/chat/experiences")
     async def chat_experiences_post(data: ExperienceRequest):
@@ -80,11 +53,9 @@ Output only the JSON array — no extra text.
 
             llm_output = generate_itinerary(prompt)
 
-            # If LLM already returns JSON list
             if isinstance(llm_output, list):
                 return {"response": llm_output}
 
-            # Else try parsing
             llm_output_cleaned = llm_output.strip()
             if llm_output_cleaned.startswith("```json"):
                 llm_output_cleaned = llm_output_cleaned.split("```json")[-1].split("```")[0].strip()

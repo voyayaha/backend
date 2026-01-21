@@ -59,17 +59,7 @@ async def proxy_image(url: str):
             media_type=r.headers.get("content-type", "image/jpeg"),
             headers={"Cache-Control": "public, max-age=86400"}
         )
-def normalize_stops(stops, location, motivation):
-    normalized = []
 
-    for s in stops:
-        normalized.append({
-            "title": s.get("title") or s.get("name") or f"Explore {location}",
-            "description": s.get("description") or "Enjoy this recommended place during your trip.",
-            "why_it_fits": f"Matches your interest in {motivation or 'exploring new places'}."
-        })
-
-    return normalized
 
 
 # -----------------------------
@@ -88,19 +78,34 @@ async def chat_experiences(
     - title
     - intro
     - top_places (3 items)
+    - indoor/outdoor suggestions based on current weather
     """
 
-    # Step 1: Fetch nearby places (may be empty, that's OK)
+    # Step 1: Fetch nearby places + weather
     try:
         stops_data = await get_combined_experiences(location, activity or "tourist")
         yelp_results = stops_data.get("yelp", [])
         geo_results = stops_data.get("geoapify", [])
         final_stops = yelp_results + geo_results
+
+        # Weather info
+        weather = stops_data.get("weather", {"summary": "Unknown", "indoor_preferred": True})
+        indoor_only = stops_data.get("indoor_only", weather.get("indoor_preferred", True))
     except Exception as e:
         print("Experience APIs failed:", e)
         final_stops = []
+        weather = {"summary": "Unknown", "indoor_preferred": True}
+        indoor_only = True
 
-    # Step 2: Build LLM prompt (even if final_stops is empty)
+    # Step 2: Decide activity filter based on weather
+    if indoor_only:
+        activity_note = "Weather suggests indoor activities."
+        query_suffix = " indoor"
+    else:
+        activity_note = "Weather is suitable for outdoor activities."
+        query_suffix = " outdoor"
+
+    # Step 3: Build LLM prompt (even if final_stops is empty)
     prompt = f"""
 You are Voyayaha AI Travel Guide.
 
@@ -112,20 +117,19 @@ Activity: {activity}
 Duration: {duration}
 Motivation: {motivation}
 
+Current weather: {weather.get("summary", "Unknown")}.
+Suggestion: {activity_note}
+
 Your task:
-Generate 3 travel recommendations in CITY GUIDE style.
+Generate 3 travel recommendations in CITY-GUIDE style.
 
 Each recommendation MUST be a JSON object with:
 
 - title: short heading
-- intro: 1–2 lines describing what people generally enjoy in {location}
+- intro: 1–2 lines describing what people generally enjoy in {location} (mention indoor/outdoor if relevant)
 - top_places: an array of exactly 3 objects:
     - name: famous place or activity in {location}
     - tip: what the traveler can do there and why it's good
-
-IMPORTANT:
-- Do NOT return generic titles like "Explore {location}" only.
-- Give REAL city-specific places and activities.
 
 Example format:
 
@@ -147,31 +151,33 @@ Nearby places for reference (may be empty):
 Return ONLY valid JSON. No extra text.
 """
 
-    # Step 3: Call LLM
+    # Step 4: Call LLM
     try:
         ai_output = generate_itinerary(prompt)
 
-        # Validate
+        # Validate AI output
         if not ai_output or not isinstance(ai_output, list):
             raise ValueError("Invalid AI output")
 
         cleaned = []
-
         for item in ai_output:
             cleaned.append({
                 "title": item.get("title", f"Highlights of {location}"),
-                "intro": item.get("intro", f"{location} is popular for sightseeing, food, and culture."),
+                "intro": item.get("intro", f"{location} is popular for sightseeing, food, and culture. {activity_note}"),
                 "top_places": item.get("top_places", [])[:3]
             })
 
-        return {"stops": cleaned}
+        return {
+            "stops": cleaned,
+            "weather": weather
+        }
 
     except Exception as e:
-        # Final structured fallback (NOT generic titles)
+        # Final structured fallback (not generic titles)
         safe = [
             {
                 "title": f"Highlights of {location}",
-                "intro": f"{location} is known for its culture, food, and famous attractions.",
+                "intro": f"{location} is known for its culture, food, and famous attractions. {activity_note}",
                 "top_places": [
                     {"name": "City Center", "tip": "Walk around and explore major landmarks."},
                     {"name": "Local Market", "tip": "Try local cuisine and street food."},
@@ -182,8 +188,10 @@ Return ONLY valid JSON. No extra text.
 
         return {
             "stops": safe,
+            "weather": weather,
             "warning": f"LLM failed, used structured fallback: {str(e)}"
         }
+
 
 
 # -----------------------------
@@ -230,6 +238,7 @@ async def social(location: str = "Mumbai", limit: int = 5):
 async def trends(location: str = "Pune"):
     query = f"{location} travel OR {location} places OR {location} itinerary"
     return await get_reddit_posts(query, limit=8)
+
 
 
 

@@ -7,19 +7,16 @@ GEOAPIFY_API_KEY = os.getenv("GEOAPIFY_API_KEY")
 
 
 async def search_geoapify(location: str, query: str):
-    """
-    Geoapify fallback search for POIs
-    """
     if not GEOAPIFY_API_KEY:
         print("❌ GEOAPIFY_API_KEY not set")
         return []
 
     url = "https://api.geoapify.com/v2/places"
 
-    # Better query for Geoapify
     params = {
         "text": f"{query} in {location}",
-        "limit": 12,
+        "categories": "tourism.attraction,entertainment,museum,leisure",
+        "limit": 10,
         "apiKey": GEOAPIFY_API_KEY,
     }
 
@@ -28,6 +25,8 @@ async def search_geoapify(location: str, query: str):
             async with session.get(url, params=params) as res:
                 if res.status != 200:
                     print("❌ Geoapify HTTP error:", res.status)
+                    text = await res.text()
+                    print("Geoapify response:", text)
                     return []
 
                 data = await res.json()
@@ -58,9 +57,9 @@ async def search_geoapify(location: str, query: str):
 async def get_combined_experiences(location: str, query: str):
     print(f"🔎 Searching experiences for: {location} | query: {query}")
 
-    # 1. Weather (USE YOUR FUNCTION)
+    # 1. Weather
     try:
-        weather = await get_weather_and_risk(location)
+        weather = await get_weather(location)   # 🔑 FIXED NAME
         print("🌦 Weather:", weather)
     except Exception as e:
         print("❌ Weather error:", e)
@@ -72,7 +71,7 @@ async def get_combined_experiences(location: str, query: str):
 
     indoor_only = weather.get("indoor_preferred", True)
 
-    # 🔑 Modify query based on weather
+    # Modify query based on weather
     if indoor_only:
         query = query + " indoor"
     else:

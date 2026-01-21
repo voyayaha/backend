@@ -3,6 +3,8 @@ from pydantic import BaseModel
 from datetime import datetime
 import json
 from llm import generate_itinerary
+from pydantic import BaseModel
+from typing import Optional
 
 # Only needed if run standalone
 app = FastAPI()
@@ -13,8 +15,11 @@ app = FastAPI()
 
 class ExperienceRequest(BaseModel):
     location: str
-    checkin: str  # "2025-08-04"
-    checkout: str
+    budget: Optional[str] = ""
+    activity: Optional[str] = ""
+    duration: str                # half_day | full_day | multi_day
+    motivation: Optional[str] = ""
+    num_days: Optional[int] = 1  # only used if multi_day
 
 # -----------------------------
 # Route registration
@@ -28,70 +33,84 @@ def register_chat_routes(app: FastAPI):
     # ==========================================
     # POST route – for future daily itineraries
     # ==========================================
-    @app.post("/chat/experiences")
+    @ app.post("/chat/experiences")
     async def chat_experiences_post(data: ExperienceRequest):
         try:
-            checkin_date = datetime.strptime(data.checkin, "%Y-%m-%d")
-            checkout_date = datetime.strptime(data.checkout, "%Y-%m-%d")
-            duration_days = (checkout_date - checkin_date).days
-
-            # ✅ Decide experiences per day
-            if duration_days <= 1:
-                experiences_per_day = 3   # half-day or full-day
+            location = data.location
+            budget = data.budget or ""
+            activity = data.activity or ""
+            duration = data.duration
+            motivation = data.motivation or ""
+            num_days = data.num_days or 1
+    
+            # 🧠 Decide experiences per day
+            if duration in ["half_day", "full_day"]:
+                experiences_per_day = 3
+                total_experiences = 3
+                days = 1
             else:
-                experiences_per_day = 2   # multi-day
-
-            total_experiences = max(1, duration_days) * experiences_per_day
-
+                experiences_per_day = 2
+                days = max(1, num_days)
+                total_experiences = days * experiences_per_day
+    
+            print("RECEIVED:", data)
+            print("TOTAL EXPERIENCES:", total_experiences)
+    
             prompt = f"""
-You are a travel assistant. The user is visiting {data.location} between {data.checkin} and {data.checkout} ({duration_days} days).
-
-Rules:
-- If the trip is 1 day or less, suggest at least 3 experiences.
-- If the trip is more than 1 day, suggest exactly 2 experiences per day.
-- Total number of experiences must be {total_experiences}.
-
-Generate a JSON array of daily experiences.
-
-Each item in the array must be:
-{{
-  "title": "Marine Drive",
-  "time": "9:00 am - 10:30 am",
-  "description": "Walk along the sea during the misty morning."
-}}
-
-Output only the JSON array — no extra text.
-"""
-
+    You are a travel assistant.
+    
+    User details:
+    - Location: {location}
+    - Budget: {budget}
+    - Activity type: {activity}
+    - Motivation: {motivation}
+    - Trip duration: {days} days
+    
+    Rules:
+    - If trip is 1 day or less, suggest exactly 3 experiences.
+    - If trip is more than 1 day, suggest exactly 2 experiences per day.
+    - Total number of experiences must be exactly {total_experiences}.
+    
+    Generate a JSON array of experiences.
+    
+    Each item must be:
+    {{
+      "title": "Marine Drive",
+      "intro": "Morning walk by the sea.",
+      "top_places": [
+        {{"name": "Marine Drive", "tip": "Best at sunrise"}}
+      ]
+    }}
+    
+    Output only the JSON array. No explanation text.
+    """
+    
             llm_output = generate_itinerary(prompt)
-
+    
             if isinstance(llm_output, list):
-                return {"response": llm_output}
-
-            llm_output_cleaned = llm_output.strip()
-            if llm_output_cleaned.startswith("```json"):
-                llm_output_cleaned = llm_output_cleaned.split("```json")[-1].split("```")[0].strip()
-
-            experiences = json.loads(llm_output_cleaned)
-
-            # ✅ Enforce exact number of experiences
-            if isinstance(experiences, list):
-                if len(experiences) > total_experiences:
-                    experiences = experiences[:total_experiences]
-
+                experiences = llm_output
+            else:
+                cleaned = llm_output.strip()
+                if cleaned.startswith("```json"):
+                    cleaned = cleaned.split("```json")[-1].split("```")[0].strip()
+    
+                experiences = json.loads(cleaned)
+    
+            # 🔒 Enforce exact count
+            if len(experiences) > total_experiences:
+                experiences = experiences[:total_experiences]
             elif len(experiences) < total_experiences:
                 last = experiences[-1] if experiences else {
                     "title": "Explore the city",
-                    "time": "Flexible",
-                    "description": f"Discover more of {data.location}."
-        }
-
+                    "intro": f"Discover more of {location}.",
+                    "top_places": []
+                }
                 while len(experiences) < total_experiences:
                     experiences.append(last)
-
-            return {"response": experiences}
-
-
+    
+            # ✅ IMPORTANT: match frontend expectation
+            return {"stops": experiences}
+    
         except Exception as e:
-            return {"response": [], "error": f"Error generating experiences: {e}"}
-
+            print("ERROR:", e)
+            return {"stops": [], "error": str(e)}

@@ -74,7 +74,24 @@ Output only the JSON array — no extra text.
 
             experiences = json.loads(llm_output_cleaned)
 
+            # ✅ Enforce exact number of experiences
+            if isinstance(experiences, list):
+                if len(experiences) > total_experiences:
+                    experiences = experiences[:total_experiences]
+
+            elif len(experiences) < total_experiences:
+                last = experiences[-1] if experiences else {
+                    "title": "Explore the city",
+                    "time": "Flexible",
+                    "description": f"Discover more of {data.location}."
+        }
+
+                while len(experiences) < total_experiences:
+                    experiences.append(last)
+
             return {"response": experiences}
+
 
         except Exception as e:
             return {"response": [], "error": f"Error generating experiences: {e}"}
+

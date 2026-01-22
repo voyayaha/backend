@@ -6,20 +6,20 @@ import httpx
 from dotenv import load_dotenv
 import os
 import copy
+import json
 
 from hotels import search_hotels
 from social import get_youtube_posts, get_reddit_posts
 from experiences import get_combined_experiences
 from llm import generate_itinerary
 from weather import get_weather_and_risk
+
 from pydantic import BaseModel
 from typing import Optional
-import json
 
 load_dotenv()
 
 app = FastAPI(title="Voyayaha – AI Travel Concierge")
-
 
 # -----------------------------
 # CORS
@@ -39,6 +39,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# -----------------------------
+# MODELS
+# -----------------------------
 class ExperienceRequest(BaseModel):
     location: str
     budget: Optional[str] = ""
@@ -51,7 +54,6 @@ class ExperienceRequest(BaseModel):
 # -----------------------------
 # CHAT / FRONTEND RECOMMENDATIONS
 # -----------------------------
-
 @app.post("/chat/experiences")
 async def chat_experiences_post(data: ExperienceRequest):
     try:
@@ -117,46 +119,53 @@ Example format:
 
 IMPORTANT:
 - Use REAL places in {location}.
-- Respect indoor vs outdoor based on common sense.
-
-Return ONLY valid JSON array. No extra text.
+- Return ONLY valid JSON array. No extra text.
 """
-
 
         llm_output = generate_itinerary(prompt)
 
+        # -----------------------------
         # Parse LLM output safely
+        # -----------------------------
         if isinstance(llm_output, list):
             experiences = llm_output
         else:
             cleaned = llm_output.strip()
-            if cleaned.startswith("```json"):
-                cleaned = cleaned.split("```json")[-1].split("```")[0].strip()
+
+            if cleaned.startswith("```"):
+                cleaned = cleaned.split("```")[1]
 
             experiences = json.loads(cleaned)
 
-        # 🔒 Enforce exact count
+        # -----------------------------
+        # 🔒 Enforce exact count WITHOUT repeating same object
+        # -----------------------------
         if len(experiences) > total_experiences:
             experiences = experiences[:total_experiences]
+
         elif len(experiences) < total_experiences:
-            last = experiences[-1] if experiences else {
-                "day": 1,
-				"title": f"Explore {location}",
-				"intro": f"Discover more of {location}.",
-				"top_places": []
-            }
+            if experiences:
+                base = experiences[-1]
+            else:
+                base = {
+                    "day": 1,
+                    "title": f"Explore {location}",
+                    "intro": f"Discover more of {location}.",
+                    "top_places": []
+                }
+
             while len(experiences) < total_experiences:
-			    new_item = copy.deepcopy(last)
-			    new_item["title"] = f"{last['title']} (More ideas)"
-			    experiences.append(new_item)
+                new_item = copy.deepcopy(base)
+                new_item["title"] = f"{base['title']} (More ideas)"
+                new_item["day"] = len(experiences) // experiences_per_day + 1
+                experiences.append(new_item)
 
-
-        # ✅ Match frontend expectation
         return {"stops": experiences}
 
     except Exception as e:
         print("ERROR in /chat/experiences:", e)
         return {"stops": [], "error": str(e)}
+
 
 # -----------------------------
 # ROOT
@@ -164,6 +173,7 @@ Return ONLY valid JSON array. No extra text.
 @app.get("/")
 def root():
     return {"status": "Voyayaha backend running"}
+
 
 # -----------------------------
 # IMAGE PROXY
@@ -183,8 +193,6 @@ async def proxy_image(url: str):
         )
 
 
-
-
 # -----------------------------
 # EXPERIENCES (RAW DATA)
 # -----------------------------
@@ -195,12 +203,14 @@ async def experiences(location: str, query: str = "tourist"):
     """
     return await get_combined_experiences(location, query)
 
+
 # -----------------------------
 # HOTELS
 # -----------------------------
 @app.get("/hotels")
 async def hotels(city: str, check_in: str, check_out: str, limit: int = 6):
     return await search_hotels(city, check_in, check_out, limit)
+
 
 # -----------------------------
 # WEATHER
@@ -209,9 +219,6 @@ async def hotels(city: str, check_in: str, check_out: str, limit: int = 6):
 async def weather(location: str):
     return await get_weather_and_risk(location)
 
-# -----------------------------
-# CHAT / FRONTEND RECOMMENDATIONS (FIXED)
-# -----------------------------
 
 # -----------------------------
 # SOCIAL
@@ -222,6 +229,7 @@ async def social(location: str = "Mumbai", limit: int = 5):
     youtube_posts = await get_youtube_posts(location, limit)
     return youtube_posts + reddit_posts
 
+
 # -----------------------------
 # TRENDS
 # -----------------------------
@@ -229,16 +237,3 @@ async def social(location: str = "Mumbai", limit: int = 5):
 async def trends(location: str = "Pune"):
     query = f"{location} travel OR {location} places OR {location} itinerary"
     return await get_reddit_posts(query, limit=8)
-
-
-
-
-
-
-
-
-
-
-
-
-

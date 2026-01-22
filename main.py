@@ -76,33 +76,52 @@ async def chat_experiences_post(data: ExperienceRequest):
         print("TOTAL EXPERIENCES:", total_experiences)
 
         prompt = f"""
-You are a travel assistant.
+You are Voyayaha AI Travel Guide.
 
-User details:
-- Location: {location}
-- Budget: {budget}
-- Activity type: {activity}
-- Motivation: {motivation}
-- Trip duration: {days} days
+The user is visiting: {location}
+
+User preferences:
+Budget: {budget}
+Activity: {activity}
+Motivation: {motivation}
+Trip duration: {days} days
+
+Your task:
+Generate a multi-day itinerary in CITY GUIDE style.
 
 Rules:
-- If trip is 1 day or less, suggest exactly 3 experiences.
-- If trip is more than 1 day, suggest exactly 2 experiences per day.
-- Total number of experiences must be exactly {total_experiences}.
+- For each day, generate exactly {experiences_per_day} recommendations.
+- Total items must be exactly {total_experiences}.
+- Each item MUST include:
+    - day: day number (1, 2, 3...)
+    - title: short heading for that experience block
+    - intro: 1–2 lines describing what people enjoy
+    - top_places: array of exactly 3 objects:
+        - name
+        - tip
 
-Generate a JSON array of experiences.
+Example format:
 
-Each item must be:
-{{
-  "title": "Marine Drive",
-  "intro": "Morning walk by the sea.",
-  "top_places": [
-    {{"name": "Marine Drive", "tip": "Best at sunrise"}}
-  ]
-}}
+[
+  {{
+    "day": 1,
+    "title": "Bangkok Relaxation Day",
+    "intro": "Unwind in Bangkok’s green and wellness spots.",
+    "top_places": [
+      {{"name": "Lumphini Park", "tip": "Relax with a walk and lake views."}},
+      {{"name": "Suan Rot Fai Park", "tip": "Enjoy gardens and cycling tracks."}},
+      {{"name": "Mandara Spa", "tip": "Rejuvenate with a traditional Thai massage."}}
+    ]
+  }}
+]
 
-Output only the JSON array. No explanation text.
+IMPORTANT:
+- Use REAL places in {location}.
+- Respect indoor vs outdoor based on common sense.
+
+Return ONLY valid JSON array. No extra text.
 """
+
 
         llm_output = generate_itinerary(prompt)
 
@@ -121,9 +140,10 @@ Output only the JSON array. No explanation text.
             experiences = experiences[:total_experiences]
         elif len(experiences) < total_experiences:
             last = experiences[-1] if experiences else {
-                "title": "Explore the city",
-                "intro": f"Discover more of {location}.",
-                "top_places": []
+                "day": 1,
+				"title": f"Explore {location}",
+				"intro": f"Discover more of {location}.",
+				"top_places": []
             }
             while len(experiences) < total_experiences:
                 experiences.append(last)
@@ -206,7 +226,6 @@ async def social(location: str = "Mumbai", limit: int = 5):
 async def trends(location: str = "Pune"):
     query = f"{location} travel OR {location} places OR {location} itinerary"
     return await get_reddit_posts(query, limit=8)
-
 
 
 

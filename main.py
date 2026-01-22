@@ -143,22 +143,7 @@ IMPORTANT:
         if len(experiences) > total_experiences:
             experiences = experiences[:total_experiences]
 
-        elif len(experiences) < total_experiences:
-            if experiences:
-                base = experiences[-1]
-            else:
-                base = {
-                    "day": 1,
-                    "title": f"Explore {location}",
-                    "intro": f"Discover more of {location}.",
-                    "top_places": []
-                }
-
-            while len(experiences) < total_experiences:
-                new_item = copy.deepcopy(base)
-                new_item["title"] = f"{base['title']} (More ideas)"
-                new_item["day"] = len(experiences) // experiences_per_day + 1
-                experiences.append(new_item)
+       
 
         return {"stops": experiences}
 
@@ -237,3 +222,4 @@ async def social(location: str = "Mumbai", limit: int = 5):
 async def trends(location: str = "Pune"):
     query = f"{location} travel OR {location} places OR {location} itinerary"
     return await get_reddit_posts(query, limit=8)
+

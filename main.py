@@ -146,9 +146,10 @@ Return ONLY valid JSON array. No extra text.
 				"top_places": []
             }
             while len(experiences) < total_experiences:
-                new_item = copy.deepcopy(last)
-    			new_item["title"] = f"{last['title']} (More ideas)"
-    			experiences.append(new_item)
+			    new_item = copy.deepcopy(last)
+			    new_item["title"] = f"{last['title']} (More ideas)"
+			    experiences.append(new_item)
+
 
         # ✅ Match frontend expectation
         return {"stops": experiences}
@@ -228,6 +229,7 @@ async def social(location: str = "Mumbai", limit: int = 5):
 async def trends(location: str = "Pune"):
     query = f"{location} travel OR {location} places OR {location} itinerary"
     return await get_reddit_posts(query, limit=8)
+
 
 
 

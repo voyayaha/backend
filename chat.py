@@ -107,10 +107,46 @@ def register_chat_routes(app: FastAPI):
                 }
                 while len(experiences) < total_experiences:
                     experiences.append(last)
-    
-            # ✅ IMPORTANT: match frontend expectation
-            return {"stops": experiences}
-    
-        except Exception as e:
-            print("ERROR:", e)
-            return {"stops": [], "error": str(e)}
+
+            # ==========================================
+            # 🧩 GROUP EXPERIENCES INTO DAY-WISE CARDS
+            # ==========================================
+
+            cards = []
+            index = 0
+
+            for day in range(days):
+                day_items = []
+
+                for _ in range(experiences_per_day):
+                    if index >= len(experiences):
+                        break
+
+                    exp = experiences[index]
+                    index += 1
+
+                    # Extract place names from top_places
+                    places = []
+                    for p in exp.get("top_places", []):
+                        name = p.get("name")
+                        if name:
+                            places.append(name)
+
+                    # Fallback if LLM did not give top_places
+                    if not places:
+                        places.append(exp.get("title", "Explore nearby attractions"))
+
+                    day_items.extend(places)
+
+                # Limit to exactly experiences_per_day items
+                day_items = day_items[:experiences_per_day]
+
+                cards.append({
+                    "title": f"Day {day+1} in {location}",
+                    "description": f"Recommended plan for day {day+1} in {location}.",
+                    "items": day_items
+                })
+
+            # ✅ RETURN IN FRONTEND-FRIENDLY FORMAT
+            return {"experiences": cards}
+

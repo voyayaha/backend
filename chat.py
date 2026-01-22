@@ -46,14 +46,15 @@ def register_chat_routes(app: FastAPI):
             # 🧠 Decide experiences per day
             if duration in ["half_day", "full_day"]:
                 experiences_per_day = 3
-                total_experiences = 3
                 days = 1
             else:
                 experiences_per_day = 2
                 days = max(1, num_days)
-                total_experiences = days * experiences_per_day
+    
+            total_experiences = days * experiences_per_day
     
             print("RECEIVED:", data)
+            print("DAYS:", days)
             print("TOTAL EXPERIENCES:", total_experiences)
     
             prompt = f"""
@@ -93,7 +94,6 @@ def register_chat_routes(app: FastAPI):
                 cleaned = llm_output.strip()
                 if cleaned.startswith("```json"):
                     cleaned = cleaned.split("```json")[-1].split("```")[0].strip()
-    
                 experiences = json.loads(cleaned)
     
             # 🔒 Enforce exact count
@@ -107,46 +107,43 @@ def register_chat_routes(app: FastAPI):
                 }
                 while len(experiences) < total_experiences:
                     experiences.append(last)
-
-            # ==========================================
-            # 🧩 GROUP EXPERIENCES INTO DAY-WISE CARDS
-            # ==========================================
-
+    
+            # 🧩 GROUP INTO DAY-WISE CARDS
             cards = []
             index = 0
-
+    
             for day in range(days):
                 day_items = []
-
+    
                 for _ in range(experiences_per_day):
                     if index >= len(experiences):
                         break
-
+    
                     exp = experiences[index]
                     index += 1
-
-                    # Extract place names from top_places
+    
                     places = []
                     for p in exp.get("top_places", []):
                         name = p.get("name")
                         if name:
                             places.append(name)
-
-                    # Fallback if LLM did not give top_places
+    
                     if not places:
                         places.append(exp.get("title", "Explore nearby attractions"))
-
+    
                     day_items.extend(places)
-
-                # Limit to exactly experiences_per_day items
+    
                 day_items = day_items[:experiences_per_day]
-
+    
                 cards.append({
                     "title": f"Day {day+1} in {location}",
                     "description": f"Recommended plan for day {day+1} in {location}.",
                     "items": day_items
                 })
-
-            # ✅ RETURN IN FRONTEND-FRIENDLY FORMAT
+    
+            # ✅ FINAL RESPONSE FORMAT
             return {"experiences": cards}
-
+    
+        except Exception as e:
+            print("ERROR:", e)
+            return {"experiences": [], "error": str(e)}

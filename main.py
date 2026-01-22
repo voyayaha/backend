@@ -15,7 +15,6 @@ from weather import get_weather_and_risk
 from pydantic import BaseModel
 from typing import Optional
 import json
-from llm import generate_itinerary
 
 load_dotenv()
 
@@ -207,6 +206,7 @@ async def social(location: str = "Mumbai", limit: int = 5):
 async def trends(location: str = "Pune"):
     query = f"{location} travel OR {location} places OR {location} itinerary"
     return await get_reddit_posts(query, limit=8)
+
 
 
 

@@ -5,7 +5,7 @@ from urllib.parse import unquote
 import httpx
 from dotenv import load_dotenv
 import os
-
+import copy
 
 from hotels import search_hotels
 from social import get_youtube_posts, get_reddit_posts
@@ -146,7 +146,7 @@ Return ONLY valid JSON array. No extra text.
 				"top_places": []
             }
             while len(experiences) < total_experiences:
-                experiences.append(last)
+                experiences.append(copy.deepcopy(last))
 
         # ✅ Match frontend expectation
         return {"stops": experiences}
@@ -226,6 +226,7 @@ async def social(location: str = "Mumbai", limit: int = 5):
 async def trends(location: str = "Pune"):
     query = f"{location} travel OR {location} places OR {location} itinerary"
     return await get_reddit_posts(query, limit=8)
+
 
 
 

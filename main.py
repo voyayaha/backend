@@ -16,6 +16,7 @@ from weather import get_weather_and_risk
 
 from pydantic import BaseModel
 from typing import Optional
+from villageexperiences import get_village_experiences
 
 load_dotenv()
 
@@ -222,4 +223,24 @@ async def social(location: str = "Mumbai", limit: int = 5):
 async def trends(location: str = "Pune"):
     query = f"{location} travel OR {location} places OR {location} itinerary"
     return await get_reddit_posts(query, limit=8)
+
+@app.get("/village/experiences")
+async def village_experiences(
+    location: str = Query(..., description="Village / town / place name")
+):
+    """
+    Example:
+    /village/experiences?location=Ranikhet
+    """
+
+    try:
+        result = await get_village_experiences(location)
+        return result
+
+    except Exception as e:
+        return {
+            "location": location,
+            "error": str(e),
+            "experiences": []
+        }
 

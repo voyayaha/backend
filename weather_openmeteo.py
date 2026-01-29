@@ -22,20 +22,30 @@ def get_weather_16_days(lat: float, lon: float):
     params = {
         "latitude": lat,
         "longitude": lon,
-        "daily": "temperature_2m_max,temperature_2m_min,weathercode",
+        "daily": (
+            "temperature_2m_max,"
+            "temperature_2m_min,"
+            "weathercode,"
+            "rain_sum,"
+            "windspeed_10m_max"
+        ),
         "forecast_days": 16,
         "timezone": "auto"
     }
 
     r = requests.get(url, params=params, timeout=10).json()
 
+    daily = r.get("daily", {})
+
     forecast = []
-    for i in range(len(r["daily"]["time"])):
+    for i in range(len(daily.get("time", []))):
         forecast.append({
-            "date": r["daily"]["time"][i],
-            "max_temp": r["daily"]["temperature_2m_max"][i],
-            "min_temp": r["daily"]["temperature_2m_min"][i],
-            "weather_code": r["daily"]["weathercode"][i],
+            "date": daily["time"][i],
+            "max_temp": daily["temperature_2m_max"][i],
+            "min_temp": daily["temperature_2m_min"][i],
+            "weather_code": daily["weathercode"][i],
+            "rain_mm": daily["rain_sum"][i],
+            "wind_kmph": daily["windspeed_10m_max"][i],
         })
 
     return forecast

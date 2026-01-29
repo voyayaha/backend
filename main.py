@@ -17,6 +17,13 @@ from weather import get_weather_and_risk
 from pydantic import BaseModel
 from typing import Optional
 from villageexperiences import get_village_experiences
+from weather_openmeteo import get_weather_16_days
+from aqi_openaq import get_aqi
+from crowd_foursquare import get_crowd_estimate
+
+
+
+
 
 load_dotenv()
 
@@ -243,4 +250,34 @@ async def village_experiences(
             "error": str(e),
             "experiences": []
         }
+
+@app.get("/travel-intel")
+def travel_intel(
+    city: str = Query(...),
+    lat: float = Query(...),
+    lon: float = Query(...)
+):
+    weather = get_weather_16_days(lat, lon)
+    aqi = get_aqi(city)
+    crowd = get_crowd_estimate(city)
+
+    recommendation = []
+
+    if aqi["health_note"] in ["Unhealthy", "Unhealthy for sensitive groups"]:
+        recommendation.append("Prefer indoor activities")
+
+    if crowd["crowd_level"] == "High":
+        recommendation.append("Expect crowds at popular places")
+
+    if not recommendation:
+        recommendation.append("Good time for sightseeing")
+
+    return {
+        "city": city,
+        "weather_16_day_forecast": weather,
+        "air_quality": aqi,
+        "crowd_estimation": crowd,
+        "recommendation": " | ".join(recommendation)
+    }
+
 

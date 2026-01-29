@@ -259,34 +259,58 @@ async def village_experiences(
 @app.get("/travel-intel")
 def travel_intel(
     city: str = Query(..., description="City name"),
-    lat: float | None = Query(None),
-    lon: float | None = Query(None)
+    lat: float | None = Query(None, description="Latitude (optional)"),
+    lon: float | None = Query(None, description="Longitude (optional)")
 ):
-    # If lat/lon not provided, resolve from city
+    # Resolve latitude & longitude if not provided
     if lat is None or lon is None:
         lat, lon = get_lat_lon_from_city(city)
         if lat is None or lon is None:
-            raise HTTPException(status_code=404, detail="City not found")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Unable to resolve location for city: {city}"
+            )
 
+    # Fetch data from individual services
     weather = get_weather_16_days(lat, lon)
     aqi = get_aqi(city)
     crowd = get_crowd_estimate(city)
 
-    recommendation = []
+    recommendations = []
 
-    if aqi.get("health_note") in ["Unhealthy", "Unhealthy for sensitive groups"]:
-        recommendation.append("Prefer indoor activities")
+    # AQI-based recommendation
+    if aqi.get("health_note") in [
+        "Unhealthy",
+        "Unhealthy for sensitive groups"
+    ]:
+        recommendations.append("Prefer indoor activities due to air quality")
 
+    # Crowd-based recommendation
     if crowd.get("crowd_level") == "High":
-        recommendation.append("Expect crowds at popular places")
+        recommendations.append("Expect crowds at popular attractions")
 
-    if not recommendation:
-        recommendation.append("Good time for sightseeing")
+    # Weather-based recommendation (using next 3 days)
+    for day in weather[:3]:
+        if day.get("rain_mm", 0) > 5:
+            recommendations.append("Rain expected – plan indoor attractions")
+            break
+        if day.get("wind_kmph", 0) > 30:
+            recommendations.append("Windy conditions – avoid boat or desert activities")
+            break
+
+    if not recommendations:
+        recommendations.append("Good time for sightseeing")
 
     return {
         "city": city,
+        "coordinates": {
+            "latitude": lat,
+            "longitude": lon
+        },
         "weather_16_day_forecast": weather,
         "air_quality": aqi,
         "crowd_estimation": crowd,
-        "recommendation": " | ".join(recommendation)
+        "recommendation": " | ".join(recommendations)
     }
+
+

@@ -17,7 +17,12 @@ from weather import get_weather_and_risk
 from pydantic import BaseModel
 from typing import Optional
 from villageexperiences import get_village_experiences
-from weather_openmeteo import get_weather_16_days
+from weather_openmeteo import (
+    get_weather_16_days,
+    get_lat_lon_from_city
+)
+from aqi_openaq import get_aqi
+from crowd_foursquare import get_crowd_estimate
 from aqi_openaq import get_aqi
 from crowd_foursquare import get_crowd_estimate
 
@@ -253,20 +258,26 @@ async def village_experiences(
 
 @app.get("/travel-intel")
 def travel_intel(
-    city: str = Query(...),
-    lat: float = Query(...),
-    lon: float = Query(...)
+    city: str = Query(..., description="City name"),
+    lat: float | None = Query(None),
+    lon: float | None = Query(None)
 ):
+    # If lat/lon not provided, resolve from city
+    if lat is None or lon is None:
+        lat, lon = get_lat_lon_from_city(city)
+        if lat is None or lon is None:
+            raise HTTPException(status_code=404, detail="City not found")
+
     weather = get_weather_16_days(lat, lon)
     aqi = get_aqi(city)
     crowd = get_crowd_estimate(city)
 
     recommendation = []
 
-    if aqi["health_note"] in ["Unhealthy", "Unhealthy for sensitive groups"]:
+    if aqi.get("health_note") in ["Unhealthy", "Unhealthy for sensitive groups"]:
         recommendation.append("Prefer indoor activities")
 
-    if crowd["crowd_level"] == "High":
+    if crowd.get("crowd_level") == "High":
         recommendation.append("Expect crowds at popular places")
 
     if not recommendation:
@@ -279,5 +290,3 @@ def travel_intel(
         "crowd_estimation": crowd,
         "recommendation": " | ".join(recommendation)
     }
-
-

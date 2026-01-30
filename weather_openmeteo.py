@@ -1,4 +1,7 @@
 import requests
+import os
+
+OPENWEATHER = os.getenv("OPENWEATHER")
 
 def get_lat_lon_from_city(city: str):
     url = "https://geocoding-api.open-meteo.com/v1/search"
@@ -49,3 +52,47 @@ def get_weather_16_days(lat: float, lon: float):
         })
 
     return forecast
+
+# ---------- AQI ----------
+def get_aqi(city: str = None, lat: float = None, lon: float = None):
+    if not OPENWEATHER:
+        return {
+            "aqi": "N/A",
+            "health_note": "AQI service unavailable"
+        }
+
+    if lat is None or lon is None:
+        return {
+            "aqi": "N/A",
+            "health_note": "Location not found"
+        }
+
+    url = "https://api.openweathermap.org/data/2.5/air_pollution"
+    params = {
+        "lat": lat,
+        "lon": lon,
+        "appid": OPENWEATHER
+    }
+
+    r = requests.get(url, params=params, timeout=10).json()
+
+    if "list" not in r or not r["list"]:
+        return {
+            "aqi": "N/A",
+            "health_note": "No AQI data available"
+        }
+
+    aqi_index = r["list"][0]["main"]["aqi"]
+
+    aqi_map = {
+        1: "Good",
+        2: "Fair",
+        3: "Moderate",
+        4: "Poor",
+        5: "Very Poor"
+    }
+
+    return {
+        "aqi": aqi_index,
+        "health_note": aqi_map.get(aqi_index, "Unknown")
+    }

@@ -22,7 +22,10 @@ from weather_openmeteo import (
     get_lat_lon_from_city,
     get_aqi
 )
-from crowd_foursquare import get_crowd_estimate
+from traveler_advice import build_traveler_advice
+from traffic_tomtom import get_traffic_status
+from crowd_rules import estimate_crowd
+
 
 
 
@@ -256,49 +259,21 @@ async def village_experiences(
         }
 
 @app.get("/travel-intel")
-def travel_intel(
-    city: str = Query(..., description="City name"),
-    lat: float | None = Query(None, description="Latitude (optional)"),
-    lon: float | None = Query(None, description="Longitude (optional)")
-):
-    # Resolve latitude & longitude if not provided
-    if lat is None or lon is None:
-        lat, lon = get_lat_lon_from_city(city)
-        if lat is None or lon is None:
-            raise HTTPException(
-                status_code=404,
-                    detail=f"Unable to resolve location for city: {city}"
-            )
+def travel_intel(city: str):
+    lat, lon = get_lat_lon_from_city(city)
+    if not lat or not lon:
+        raise HTTPException(status_code=404, detail="City not found")
 
-    # Fetch data from individual services
     weather = get_weather_16_days(lat, lon)
     aqi = get_aqi(city=city, lat=lat, lon=lon)
-    crowd = get_crowd_estimate(city)
 
-    recommendations = []
+    traffic = get_traffic_status(lat, lon)
 
-    # AQI-based recommendation
-    if aqi.get("health_note") in [
-        "Unhealthy",
-        "Unhealthy for sensitive groups"
-    ]:
-        recommendations.append("Prefer indoor activities due to air quality")
+    # Default assumption (can refine later)
+    crowd = estimate_crowd("monument")
 
-    # Crowd-based recommendation
-    if crowd.get("crowd_level") == "High":
-        recommendations.append("Expect crowds at popular attractions")
-
-    # Weather-based recommendation (using next 3 days)
-    for day in weather[:3]:
-        if day.get("rain_mm", 0) > 5:
-            recommendations.append("Rain expected – plan indoor attractions")
-            break
-        if day.get("wind_kmph", 0) > 30:
-            recommendations.append("Windy conditions – avoid boat or desert activities")
-            break
-
-    if not recommendations:
-        recommendations.append("Good time for sightseeing")
+    # 🔥 NEW LINE
+    traveler_advice = build_traveler_advice(traffic, crowd)
 
     return {
         "city": city,
@@ -308,6 +283,8 @@ def travel_intel(
         },
         "weather_16_day_forecast": weather,
         "air_quality": aqi,
+        "traffic": traffic,
         "crowd_estimation": crowd,
-        "recommendation": " | ".join(recommendations)
+        "traveler_advice": traveler_advice
     }
+

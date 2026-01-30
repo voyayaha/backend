@@ -19,12 +19,11 @@ from typing import Optional
 from villageexperiences import get_village_experiences
 from weather_openmeteo import (
     get_weather_16_days,
-    get_lat_lon_from_city
+    get_lat_lon_from_city,
+    get_aqi
 )
-from aqi_openaq import get_aqi
 from crowd_foursquare import get_crowd_estimate
-from aqi_openaq import get_aqi
-from crowd_foursquare import get_crowd_estimate
+
 
 
 
@@ -268,12 +267,12 @@ def travel_intel(
         if lat is None or lon is None:
             raise HTTPException(
                 status_code=404,
-                detail=f"Unable to resolve location for city: {city}"
+                    detail=f"Unable to resolve location for city: {city}"
             )
 
     # Fetch data from individual services
     weather = get_weather_16_days(lat, lon)
-    aqi = get_aqi(city)
+    aqi = get_aqi(city=city, lat=lat, lon=lon)
     crowd = get_crowd_estimate(city)
 
     recommendations = []
@@ -312,5 +311,3 @@ def travel_intel(
         "crowd_estimation": crowd,
         "recommendation": " | ".join(recommendations)
     }
-
-

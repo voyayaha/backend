@@ -1,5 +1,3 @@
-# traveler_advice.py
-
 def build_traveler_advice(traffic):
     advice = []
 

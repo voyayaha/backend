@@ -24,7 +24,6 @@ from weather_openmeteo import (
 )
 from traveler_advice import build_traveler_advice
 from traffic_tomtom import get_traffic_status
-from crowd_rules import estimate_crowd
 
 
 
@@ -266,14 +265,9 @@ def travel_intel(city: str):
 
     weather = get_weather_16_days(lat, lon)
     aqi = get_aqi(city=city, lat=lat, lon=lon)
-
     traffic = get_traffic_status(lat, lon)
 
-    # Default assumption (can refine later)
-    crowd = estimate_crowd("monument")
-
-    # 🔥 NEW LINE
-    traveler_advice = build_traveler_advice(traffic, crowd)
+    traveler_advice = build_traveler_advice(traffic)
 
     return {
         "city": city,
@@ -284,7 +278,6 @@ def travel_intel(city: str):
         "weather_16_day_forecast": weather,
         "air_quality": aqi,
         "traffic": traffic,
-        "crowd_estimation": crowd,
         "traveler_advice": traveler_advice
     }
 

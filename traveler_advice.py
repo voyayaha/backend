@@ -1,13 +1,15 @@
-def build_traveler_advice(traffic, crowd):
+# traveler_advice.py
+
+def build_traveler_advice(traffic):
     advice = []
 
     if traffic.get("traffic_level") == "High":
         advice.append("Expect delays reaching popular attractions")
 
-    if crowd.get("crowd_level") == "High":
-        advice.append("This location is usually crowded at this time")
+    elif traffic.get("traffic_level") == "Moderate":
+        advice.append("Some congestion expected near tourist areas")
 
-    if not advice:
-        advice.append("Good time to visit with minimal delays")
+    else:
+        advice.append("Traffic conditions are favorable for sightseeing")
 
     return " | ".join(advice)

@@ -8,6 +8,9 @@ import os
 import copy
 import json
 import requests
+import pymysql
+import os
+from typing import List
 
 from hotels import search_hotels
 from social import get_youtube_posts, get_reddit_posts
@@ -36,9 +39,6 @@ load_dotenv()
 
 app = FastAPI(title="Voyayaha – AI Travel Concierge")
 
-PHP_ENDPOINT = os.getenv("PHP_ENDPOINT")
-API_KEY = os.getenv("PHP_API_KEY")
-
 
 # -----------------------------
 # CORS
@@ -57,6 +57,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+DB_HOST = os.getenv("DB_HOST")
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+DB_NAME = os.getenv("DB_NAME")
+
+def get_db_connection():
+    return pymysql.connect(
+        host=DB_HOST,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        database=DB_NAME,
+        cursorclass=pymysql.cursors.DictCursor
+    )
+
 
 # -----------------------------
 # MODELS
@@ -287,23 +302,40 @@ def travel_intel(city: str):
     }
 
 @app.get("/api/trails")
-def get_trails(city: str = Query(...), radius: float = Query(20.0)):
+def get_trails(city: str, radius: float = 20):
+
+    connection = get_db_connection()
 
     try:
-        response = requests.get(
-            PHP_ENDPOINT,
-            params={
-                "city": city,
-                "radius": radius,
-                "key": API_KEY
-            },
-            timeout=15
-        )
+        with connection.cursor() as cursor:
 
-        response.raise_for_status()
-        return response.json()
+            # Adjust post_type if needed
+            query = """
+                SELECT 
+                    p.ID,
+                    p.post_title,
+                    p.post_content,
+                    lat.meta_value AS latitude,
+                    lng.meta_value AS longitude
+                FROM wp_posts p
+                LEFT JOIN wp_postmeta lat 
+                    ON p.ID = lat.post_id AND lat.meta_key = 'latitude'
+                LEFT JOIN wp_postmeta lng 
+                    ON p.ID = lng.post_id AND lng.meta_key = 'longitude'
+                WHERE p.post_type = 'trail'
+                AND p.post_status = 'publish'
+            """
 
-    except requests.exceptions.RequestException as e:
-        raise HTTPException(status_code=500, detail=str(e))
+            cursor.execute(query)
+            trails = cursor.fetchall()
 
+        return {
+            "city": city,
+            "radius": radius,
+            "count": len(trails),
+            "trails": trails
+        }
+
+    finally:
+        connection.close()
 

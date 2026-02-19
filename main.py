@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 import os
 import copy
 import json
+import requests
 
 from hotels import search_hotels
 from social import get_youtube_posts, get_reddit_posts
@@ -304,4 +305,5 @@ def get_trails(city: str = Query(...), radius: float = Query(20.0)):
 
     except requests.exceptions.RequestException as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 

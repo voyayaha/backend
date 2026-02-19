@@ -35,6 +35,10 @@ load_dotenv()
 
 app = FastAPI(title="Voyayaha – AI Travel Concierge")
 
+PHP_ENDPOINT = os.getenv("PHP_ENDPOINT")
+API_KEY = os.getenv("PHP_API_KEY")
+
+
 # -----------------------------
 # CORS
 # -----------------------------
@@ -280,4 +284,24 @@ def travel_intel(city: str):
         "traffic": traffic,
         "traveler_advice": traveler_advice
     }
+
+@app.get("/api/trails")
+def get_trails(city: str = Query(...), radius: float = Query(20.0)):
+
+    try:
+        response = requests.get(
+            PHP_ENDPOINT,
+            params={
+                "city": city,
+                "radius": radius,
+                "key": API_KEY
+            },
+            timeout=15
+        )
+
+        response.raise_for_status()
+        return response.json()
+
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(status_code=500, detail=str(e))
 

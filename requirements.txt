@@ -14,5 +14,7 @@ aiohttp
 datetime
 flask
 flask-cors
+gunicorn
+
 
 

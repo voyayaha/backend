@@ -58,19 +58,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DB_HOST = os.getenv("DB_HOST")
-DB_USER = os.getenv("DB_USER")
-DB_PASSWORD = os.getenv("DB_PASSWORD")
-DB_NAME = os.getenv("DB_NAME")
-
-def get_db_connection():
-    return pymysql.connect(
-        host=DB_HOST,
-        user=DB_USER,
-        password=DB_PASSWORD,
-        database=DB_NAME,
-        cursorclass=pymysql.cursors.DictCursor
-    )
 
 
 # -----------------------------
@@ -300,42 +287,4 @@ def travel_intel(city: str):
         "traffic": traffic,
         "traveler_advice": traveler_advice
     }
-
-@app.get("/api/trails")
-def get_trails(city: str, radius: float = 20):
-
-    connection = get_db_connection()
-
-    try:
-        with connection.cursor() as cursor:
-
-            # Adjust post_type if needed
-            query = """
-                SELECT 
-                    p.ID,
-                    p.post_title,
-                    p.post_content,
-                    lat.meta_value AS latitude,
-                    lng.meta_value AS longitude
-                FROM wp_posts p
-                LEFT JOIN wp_postmeta lat 
-                    ON p.ID = lat.post_id AND lat.meta_key = 'latitude'
-                LEFT JOIN wp_postmeta lng 
-                    ON p.ID = lng.post_id AND lng.meta_key = 'longitude'
-                WHERE p.post_type = 'trail'
-                AND p.post_status = 'publish'
-            """
-
-            cursor.execute(query)
-            trails = cursor.fetchall()
-
-        return {
-            "city": city,
-            "radius": radius,
-            "count": len(trails),
-            "trails": trails
-        }
-
-    finally:
-        connection.close()
 
